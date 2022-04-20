@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="about">
+    <file alias="salsa">about/300x300.jpeg</file>
+  </qresource>
+</RCC>
