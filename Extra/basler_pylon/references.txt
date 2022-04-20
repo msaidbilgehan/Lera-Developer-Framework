@@ -1,0 +1,3 @@
+Pylon: httpswww.baslerweb.comensales-supportdownloadssoftware-downloads#type=pylonsoftware;version=all
+
+PyPylon: https://github.com/basler/pypylon
