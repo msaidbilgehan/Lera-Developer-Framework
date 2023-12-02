@@ -16,6 +16,8 @@ from structure_data import Structure_Buffer
 
 # CUSTOM LIBRARIES
 from stdo import stdo
+import secrets
+
 #from structure_data import structure_buffer
 
 # TEST LIBRARIES
@@ -237,10 +239,9 @@ class Thread_Object(threading.Thread):
         self.logger.debug('Connector task is complated, ID: {}'.format(self.thread_ID))
 
     def task(self, params=None):
-        import random
         from time import time
-        random.seed(time())
-        stdo(1, "Thread Normal Task to generate Random Data: {} | ID: {}".format(random.random(), self.thread_ID))
+        secrets.SystemRandom().seed(time())
+        stdo(1, "Thread Normal Task to generate Random Data: {} | ID: {}".format(secrets.SystemRandom().random(), self.thread_ID))
 
         """
         while True:

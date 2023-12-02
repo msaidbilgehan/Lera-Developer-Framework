@@ -10,7 +10,6 @@
 import os
 import re
 import time
-import random
 import shutil
 import natsort
 # import logging
@@ -18,6 +17,7 @@ import natsort
 from inspect import currentframe, getframeinfo
 from stdo import stdo, get_time
 from enum import Enum
+import secrets
 
 # Camera Instance Flags
 class TIME_FLAGS(Enum):
@@ -378,17 +378,16 @@ def get_file_name(
             file_name = "{}_{}".format(name, get_time(level=2))
     else:
         if random_seed is None:
-            random.seed(time.time())
+            secrets.SystemRandom().seed(time.time())
         else:
-            random.seed(random_seed)
+            secrets.SystemRandom().seed(random_seed)
         if extension is not None:
             file_name = "{}_{}.{}".format(
-                name, random.randint(
-                    random_min_max[0], random_min_max[1]), extension
+                name, secrets.SystemRandom().randint(random_min_max[0], random_min_max[1]), extension
             )
         else:
             file_name = "{}_{}".format(
-                name, random.randint(random_min_max[0], random_min_max[1])
+                name, secrets.SystemRandom().randint(random_min_max[0], random_min_max[1])
             )
     return file_name
 
@@ -406,14 +405,14 @@ def name_parsing(
 def get_temp_name(seed=None):
     if seed is None:
         seed = get_time(level=0)
-    random.seed(seed * 1000000)
+    secrets.SystemRandom().seed(seed * 1000000)
 
     name = get_time(2)
 
     if name[-1] == "_":
-        name = "{}0_{}".format(name[:-1], random.randint(1000, 9999))
+        name = "{}0_{}".format(name[:-1], secrets.SystemRandom().randint(1000, 9999))
     else:
-        name = "{}_{}".format(name, random.randint(1000, 9999))
+        name = "{}_{}".format(name, secrets.SystemRandom().randint(1000, 9999))
 
     return "temp_image-{}".format(name)
 

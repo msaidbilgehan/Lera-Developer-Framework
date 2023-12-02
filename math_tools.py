@@ -1,19 +1,19 @@
 import math
 import numpy as np
-from random import seed, randint, sample
+import secrets
 
 
 def random_Bulk_Data(seed_number, start_range, end_range, number_of_data):
-    seed(seed_number)
+    secrets.SystemRandom().seed(seed_number)
     return [
-        randint(start_range, end_range)
+        secrets.SystemRandom().randint(start_range, end_range)
         for i in range(0, number_of_data)
     ]
 
 
 def random_Bulk_Data_Faster(seed_number, start_range, end_range, number_of_data):
-    seed(seed_number)
-    return sample(range(start_range, end_range), number_of_data)
+    secrets.SystemRandom().seed(seed_number)
+    return secrets.SystemRandom().sample(range(start_range, end_range), number_of_data)
 
 def coordinate_Scaling(x, y, old_w, old_h, new_w=0, new_h=0, crop_x=0, crop_y=0, degree=0, task="RESIZE", is_dual=True):
     new_x, new_y = None, None
