@@ -10,6 +10,7 @@ from psutil import Process, cpu_percent
 
 
 from structure_threading import Thread_Object
+from security import safe_command
 
 class System_Object():
 
@@ -82,8 +83,7 @@ class System_Object():
     def memory_Usage_Subprocess(self):
         global Popen, PIPE
         from subprocess import Popen, PIPE
-        out = Popen(
-            ['ps', 'v', '-p', str(self.pid)],
+        out = safe_command.run(Popen, ['ps', 'v', '-p', str(self.pid)],
             stdout=PIPE
         ).communicate()[0].split(b'\n')
         vsz_index = out[0].split().index(b'RSS')
