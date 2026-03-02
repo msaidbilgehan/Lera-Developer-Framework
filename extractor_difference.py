@@ -21,14 +21,22 @@
 """
 
 
-from stdo import stdo
+from pickle import TRUE
 import argparse
 import time
+import math
 import cv2
 import numpy as np
+from skimage.filters import threshold_li, roberts
+from skimage.metrics import mean_squared_error, structural_similarity
+from skimage import img_as_ubyte
+# import cupy as cp
+
+from stdo import stdo
 from tools import time_log, time_list, get_time  # Basic Tools
-from image_tools import open_image, show_image, save_image
-from image_manipulation import sharpening, sobel_gradient, erosion, threshold, remove_Small_Object, look_Up_Table, sobel_gradient, draw_Circle, contour_Centroids, contour_Areas, transparent_Draw, pruning, adjust_brightness, adjust_contrast, gamma_correction
+from image_tools import save_image
+from image_manipulation import sharpening, remove_Small_Object, contour_Centroids, remove_Pixel_Width, get_Contours_and_Hull, draw_Hulls_and_Bbox, get_Largest_Contour_Object, diff_Image_Masking, remove_Pixel_With_Distance_Transform, get_Thickness_With_Distance_Transform, edge_Image_Masking
+from math_tools import normalize_Comma_to_Dot_Float, point_In_Bbox_Match
 
 arguments = None
 
@@ -171,1390 +179,516 @@ def resize_to_same(src, dst):
         return dst
 
 
-def sword_of_justice(src_frame, counter):
-    kernel = np.array(
-        [   
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], 
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] 
-        ]
-    )
-    filt1 = cv2.filter2D(src_frame, -1, kernel, cv2.BORDER_DEFAULT)
+def preprocessing_5(frame, object_color='white', dict_color_symbol_extraction={}, pano_sector_index='M'):
     
-    kernel = np.array(
-        [ 
-            [1, 1, 1], 
-            [1, 1, 1], 
-            [1, 1, 1],
-            [1, 1, 1], 
-            [1, 1, 1], 
-            [1, 1, 1],
-            [1, 1, 1], 
-            [1, 1, 1], 
-            [1, 1, 1],
-            [1, 1, 1], 
-            [1, 1, 1], 
-            [1, 1, 1],
-            [1, 1, 1], 
-            [1, 1, 1], 
-            [1, 1, 1],
-            [1, 1, 1],
-        ]
-    )
-    filt2 = cv2.filter2D(src_frame, -1, kernel, cv2.BORDER_DEFAULT)
-    
-    combine = filt1 + filt2
-    
-    sub = src_frame - combine
-
-    image_pack = [src_frame, filt1, filt2, combine, sub]
-    tittle_pack = [str(counter)+"_"+"1src_frame",str(counter)+"_"+ "2filt1", str(counter)+"_"+"3filt2", str(counter)+"_"+"4combine", str(counter)+"_"+"5sub"]
-    save_image(image_pack, path="temp_files/extractor_difference/sword", filename=tittle_pack, format="png")
-    return sub
-
-
-def preprocessing_4(frame, threshold_config):
-    if len(frame.shape) == 3:
-        gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-    else:
-        gray = frame
-
-    gray_inv = cv2.bitwise_not(gray)
-    _, th = cv2.threshold(gray_inv, *threshold_config)# 40, 255, cv2.THRESH_BINARY)
-    
-    #show_pack = [gray, gray_inv, th]
-    #show_image(show_pack, open_order=1, window=True)
-    
-    return th
-
-def preprocessing_black(frame, threshold_config=210, counter=0):
-    gamma = 2
-    lookUpTable = np.empty((1,256), np.uint8)
-    for j in range(256):
-        lookUpTable[0,j] = np.clip(pow(j / 255.0, float(gamma)) * 255.0, 0, 255)
-    gc = cv2.LUT(frame, lookUpTable)
-    #sharp = sharpening(frame)
-    
-    gray = cv2.cvtColor(gc, cv2.COLOR_BGR2GRAY)
-    _, th = cv2.threshold(gray, *threshold_config) #Also working with 210 threshold coefficient#
-
-    #show_pack = [frame, sharp, gray, th]
-    #show_image(show_pack, title='P', open_order=1, window=True)
-
-    image_pack = [frame, gc, gray, th]
-    tittle_pack = [str(counter)+"_"+"1frame",str(counter)+"_"+ "2gamma", str(counter)+"_"+"3gray", str(counter)+"_"+"4th"]
-    save_image(image_pack, path="temp_files/extractor_difference/preprocessing_black", filename=tittle_pack, format="png")
-
-    return th
-
-def preprocessing_3(frame):
-    # gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-    #sharp = sharpening(gray)
-    th_not = cv2.bitwise_not(frame)
-    _, th = cv2.threshold(th_not, 135, 255, cv2.THRESH_BINARY)
-
-    kernel_opening = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3) )
-    closing = cv2.morphologyEx(th, cv2.MORPH_CLOSE, kernel_opening) 
-    
-
-    # rso = remove_Small_Object(closing.copy(), ratio=1000)[0]
-
-    #show_pack = [frame, th, th_not, closing] #, rso]
-    #show_image(show_pack, open_order=1)
-    
-    return closing
-     
-def preprocessing_2(frame, threshold_config, counter, bbox_invert=False):
-    if len(frame.shape) == 3:
-        gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-    else:
-        gray = frame
-
-    #sharp = sharpening(gray)
-    #_, th = cv2.threshold(gray, 127,255, cv2.THRESH_BINARY_INV)
-    #th_not = cv2.bitwise_not(th)
-    
-    th = threshold(gray.copy(), configs=threshold_config)
-    kernel_opening = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3) )
-    closing = cv2.morphologyEx(th, cv2.MORPH_CLOSE, kernel_opening)        
-    
-    if bbox_invert:
-        closing = cv2.bitwise_not(closing)
-
-    rso = remove_Small_Object(th.copy(), ratio=10)[0]
-
-    if bbox_invert:
-        rso = cv2.bitwise_not(rso)
-    
-    """
-    kernel = np.array(
-        [   
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], 
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] 
-        ]
-    )
-    filt1 = cv2.filter2D(rso, -1, kernel, cv2.BORDER_DEFAULT)
-    
-    kernel = np.array(
-        [ 
-            [1, 1, 1], 
-            [1, 1, 1], 
-            [1, 1, 1],
-            [1, 1, 1], 
-            [1, 1, 1], 
-            [1, 1, 1],
-            [1, 1, 1], 
-            [1, 1, 1], 
-            [1, 1, 1],
-            [1, 1, 1], 
-            [1, 1, 1], 
-            [1, 1, 1],
-            [1, 1, 1], 
-            [1, 1, 1], 
-            [1, 1, 1],
-            [1, 1, 1],
-        ]
-    )
-    filt2 = cv2.filter2D(rso, -1, kernel, cv2.BORDER_DEFAULT)
-    
-    combine = filt1 + filt2
-    
-    sub = rso - combine
-    
-    #show_pack = [gray, th, closing, rso, filt1, filt2, combine, sub]
-    #show_image(show_pack, open_order=1, window=True)
-    # import pdb; pdb.set_trace()
-    return gray, th, closing, rso, filt1, filt2, combine, sub
-    
-    #  """
-
-    sub = rso
-
-
-    #image_pack = [gray, th, closing, rso, sub]
-    #tittle_pack = [str(counter)+"_"+"1gray",str(counter)+"_"+ "2th", str(counter)+"_"+"3closing", str(counter)+"_"+"4rso", str(counter)+"_"+"8sub"]
-    #save_image(image_pack, path="temp_files/extractor_difference/preprocessing2", filename=tittle_pack, format="png")
-    
-    return gray, th, closing, rso, sub
-
-
-def preprocessing(image, method=1, is_sharp=True, is_sobel=True, is_threshold=True, window=False, sharp_scale=3, open_order=1, sobel_scale=0.05, threshold_config=[-1, -1], is_middle_object=False, middle_object_roi=[], middle_object_roi_2=[], counter=0):
-    # GRAYSCALE
-    if len(image.shape) == 3:
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    
-    rrggbb = None
-    # SHARP
-    if is_sharp and sharp_scale != 0:
-        image_sharpened = image
-        """
-        # FOR Strecth
-        image_sharpened = gamma_correction(image_sharpened, gamma=2)
-        image_sharpened = adjust_contrast(image_sharpened, contrast_factor=1.5)
-        """
-
-        for i in range(sharp_scale):
-            image_sharpened = sharpening(image_sharpened)
-
-        # show_image([image, image_sharpened, image_sharpened_c, image_sharpened_b, image_sharpened_g], ["image", "image_sharpened", "image_sharpened_c", "image_sharpened_b", "image_sharpened_g"], open_order=1)
-        # show_image([image, image_sharpened], ["image", "image_sharpened"], open_order=1)
-
-    else:
-        image_sharpened = image.copy()
-
-    # SOBEL
-    if is_sobel and sobel_scale != 0:
-        image_sharpened_sobel = sobel_gradient(image_sharpened, sobel_scale)
-    else:
-        image_sharpened_sobel = image_sharpened.copy()
-
-    # THRESHOLD
-    if is_threshold:
-        image_sharpened_sobel_threshold = threshold(image_sharpened_sobel.copy(), configs=threshold_config)
-        # FOR Strecth
-        # image_sharpened_sobel_threshold = cv2.adaptiveThreshold(image_sharpened_sobel.copy(), threshold_config[0], cv2.ADAPTIVE_THRESH_GAUSSIAN_C, threshold_config[2], 251, 33)
-    else:
-        image_sharpened_sobel_threshold = image_sharpened_sobel.copy()
-    
-    if is_middle_object:
-        mask_cekmece = image_sharpened_sobel_threshold.copy()
-
-        #print("MID-ROI:", mask_cekmece.shape, middle_object_roi)
+    if ((frame.shape[1] / frame.shape[0]) > 3) or ((frame.shape[0] / frame.shape[1]) > 3): # Long-Thin Lines #
         
-        """if threshold_config[2] == 'cv2.THRESH_BINARY_INV':
-            color = 255
+        for i in range(1):
+            frame = sharpening(frame)
+        # gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        
+        # lower = dict_color_symbol_extraction[object_color]['BGR']['lower']
+        # upper = dict_color_symbol_extraction[object_color]['BGR']['upper']
+        
+        if (object_color == 'white') or (object_color == 'gray - siyah sembol'):
+            lower = np.array([150,190,90], dtype="uint8")
+            upper = np.array([255,255,255], dtype="uint8")
         else:
-            color = 0"""
-
-        #print("Ext-difference/preprocessing-middle_object_roi:", middle_object_roi)
-        mask_cekmece[middle_object_roi[0]:middle_object_roi[1], middle_object_roi[2]:middle_object_roi[3]] = 0
-        if middle_object_roi_2:
-            mask_cekmece[middle_object_roi_2[0]:middle_object_roi_2[1], middle_object_roi_2[2]:middle_object_roi_2[3]] = 0
-
-        image_sharpened_sobel_threshold = mask_cekmece
-
-        #show_image([image, image_sharpened_sobel_threshold, mask_cekmece], title='P', open_order=2)
+            lower = np.array([150,190,90], dtype="uint8")
+            upper = np.array([255,255,255], dtype="uint8")
         
-        rrggbb = cv2.cvtColor(image_sharpened_sobel_threshold.copy(), cv2.COLOR_GRAY2BGR)
-        cv2.rectangle(rrggbb, (middle_object_roi[2], middle_object_roi[0]), (middle_object_roi[3], middle_object_roi[1]), (0,255,0), 3)
+        color_range = cv2.inRange(frame, lower, upper)
+        th = color_range
         
-    # MORPH
-    if method == 3:
-        kernel_opening = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3) )
-        openinig = cv2.morphologyEx(image_sharpened_sobel_threshold, cv2.MORPH_OPEN, kernel_opening)
-        image_sharpened_sobel_threshold = remove_Small_Object(openinig.copy(), ratio=10)[0]
-    if method == 4:
-
-
-        kernel_opening = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3) )
-        # image_sharpened_sobel_threshold = cv2.bitwise_not(image_sharpened_sobel_threshold)
-        closing = cv2.morphologyEx(image_sharpened_sobel_threshold, cv2.MORPH_CLOSE, kernel_opening)        
-        image_sharpened_sobel_threshold = remove_Small_Object(closing.copy(), ratio=1000)[0]
+    elif (200 > frame.shape[0] > 180 and 200 > frame.shape[1] > 170): # beko -> eo
         
-        # th = cv2.bitwise_not(th)
-        kernel = np.array(
-            [   
-                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], 
-                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] 
-            ]
-        )
-        filt1 = cv2.filter2D(image_sharpened_sobel_threshold, -1, kernel, cv2.BORDER_DEFAULT)
+        for i in range(1):
+            frame = sharpening(frame)
+        gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
         
-        kernel = np.array(
-            [ 
-                [1, 1, 1], 
-                [1, 1, 1], 
-                [1, 1, 1],
-                [1, 1, 1], 
-                [1, 1, 1], 
-                [1, 1, 1],
-                [1, 1, 1], 
-                [1, 1, 1], 
-                [1, 1, 1],
-                [1, 1, 1], 
-                [1, 1, 1], 
-                [1, 1, 1],
-                [1, 1, 1], 
-                [1, 1, 1], 
-                [1, 1, 1],
-                [1, 1, 1], 
-            ]
-        )
-        filt2 = cv2.filter2D(image_sharpened_sobel_threshold, -1, kernel, cv2.BORDER_DEFAULT)
+        _, th_otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_OTSU)
+        _, th_triangle = cv2.threshold(gray, 0, 255, cv2.THRESH_TRIANGLE)
+        th1 = cv2.bitwise_and(th_otsu, th_triangle)
         
-        combine = filt1 + filt2
-        sub = image_sharpened_sobel_threshold - combine
+        th_li = gray > threshold_li(gray)
+        th_li = np.where(th_li, 255, 0).astype(np.uint8)
+        th2 = cv2.bitwise_and(th_otsu, th_li)
         
-        image_sharpened_sobel_threshold = sub
-        
-        # image_sharpened_sobel_threshold &= image_sharpened_sobel_threshold_2
-        
-        # erode = cv2.bitwise_not(erode)
-        # contours, _ = cv2.findContours(erode, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        
-        if False:
-            if is_middle_object:
-                show_pack = [image, image_sharpened, mask_cekmece, closing, image_sharpened_sobel_threshold, filt1, filt2, combine, sub]
-            else:
-                show_pack = [image, image_sharpened, closing, image_sharpened_sobel_threshold, filt1, filt2, combine, sub]
-            show_image(show_pack, title='P', open_order=2)
+        th3 = cv2.bitwise_and(th2, th1)
+        th4 = cv2.bitwise_and(th1, th2)
+        th = cv2.add(th3, th4)
     
-    """
-    image_reference_preprocessed[image_reference_preprocessed < 110] = [0]
-    image_test_preprocessed[image_test_preprocessed < 110] = [0]
-    """
+    elif (frame.shape[0] > 200 and frame.shape[1] > 180): # beko -> bk
+        
+        for i in range(1):
+            frame = sharpening(frame)
+        gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        
+        _, th_otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_OTSU)
+        _, th_triangle = cv2.threshold(gray, 0, 255, cv2.THRESH_TRIANGLE)
+        th = cv2.bitwise_and(th_otsu, th_triangle)
+        
+        # _, th_triangle = cv2.threshold(gray, 0, 255, cv2.THRESH_TRIANGLE)
+        # th_li = gray > threshold_li(gray)
+        # th_li = np.where(th_li, 255, 0).astype(np.uint8)
+        
+        # th_alpha = cv2.bitwise_and(th_triangle, th_li)
+        # th_beta = cv2.bitwise_or(th_triangle, th_li)
+        # th = cv2.bitwise_xor(th_alpha, th_beta)
 
-    show_image(
-        # (image_reference, image_test, image_test_rgb),
-        (
-            image,
-            image_sharpened,
-            image_sharpened_sobel,
-            image_sharpened_sobel_threshold,
-        ),
-        title=["image", "sharpened", "sobel", "threshold"],
-        option="plot",
-        cmap="gray",
-        window=window,
-        open_order=open_order,
-    )
-
-    if method == 1 and is_middle_object:
-        list_temp_save_image = [image, image_sharpened, image_sharpened_sobel, image_sharpened_sobel_threshold, rrggbb]
-        filename = ["1_image", "2_image_sharpened", "3_image_sharpened_sobel", "4_image_sharpened_sobel_threshold", "5_rrggbb_middle_object_roi"]
-        save_image(list_temp_save_image, path="temp_files/extractor_difference/preprocessing", filename=filename, format="png")
-    
-    #list_temp_save_image = [image, image_sharpened, image_sharpened_sobel, image_sharpened_sobel_threshold]
-    #filename = [str(counter)+"_1_image", str(counter)+"_2_image_sharpened", str(counter)+"_3_image_sharpened_sobel", str(counter)+"_4_image_sharpened_sobel_threshold"]
-    #save_image(list_temp_save_image, path="temp_files/extractor_difference/preprocessing", filename=filename, format="png")
-
-    return image_sharpened_sobel_threshold, image_sharpened, image_sharpened_sobel
-
-
-def extractor_difference(image_reference, image_sample, method=1, sobel_scale=1, sharp_scale=3, is_contour_number_for_area=True, ratio=0, buffer_percentage=95, is_filter=True, filter_lower_ratio=10, filter_upper_ratio=250, threshold_config=[-1, 3], draw_diff=True, draw_diff_circle=False, fill_color=[0, 0, 255], rso_ratio=5, window=False, bbox_invert=False, counter=0, activate_debug_images=False):
-    image_subtracted_prc = -1
-    centroid_contour = -1
-    
-    image_reference_gray = None
-    image_sample_gray = None
-
-    start_diff = time.time()
-    # GRAYSCALE CONVERSION
-
-    if len(image_reference.shape) == 3:
-        if image_reference.shape[-1] == 3:
-            image_reference_gray = cv2.cvtColor(image_reference.copy(), cv2.COLOR_RGB2GRAY)
     else:
-        image_reference_gray = image_reference.copy()
-    if len(image_sample.shape) == 3:
-        if image_reference.shape[-1] == 3:
-            image_sample_gray = cv2.cvtColor(image_sample.copy(), cv2.COLOR_RGB2GRAY)
-    else:
-        image_sample_gray = image_sample.copy()
-
-
-    # PREPROCESSING
-    image_reference_preprocessed,_,_ = preprocessing(image_reference_gray.copy(), method=method, sharp_scale=sharp_scale, sobel_scale=sobel_scale, window=window, threshold_config=threshold_config, counter=counter)
-    image_sample_preprocessed,_,_ = preprocessing(image_sample_gray.copy(), method=method, sharp_scale=sharp_scale, sobel_scale=sobel_scale, window=window, threshold_config=threshold_config, counter=counter+20)
+        for i in range(1):
+            frame = sharpening(frame)
+        gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        
+        _, th_otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_OTSU)
+        _, th_triangle = cv2.threshold(gray, 0, 255, cv2.THRESH_TRIANGLE)
+        th = cv2.bitwise_and(th_otsu, th_triangle)
     
-    if method == 5:
-        image_reference_preprocessed = preprocessing_3(image_reference_gray)
-        image_sample_preprocessed = preprocessing_3(image_sample_gray)
-        
-    if method == 4:
-        """image_reference_preprocessed = preprocessing(image_reference_gray.copy(), method=method, sharp_scale=sharp_scale, is_sobel=False, is_sharp=False, window=window, threshold_config=threshold_config)
-        image_sample_preprocessed = preprocessing(image_sample_gray.copy(), method=method, sharp_scale=sharp_scale, is_sobel=False, is_sharp=False, window=window, threshold_config=threshold_config)"""
-        # show_image( [ image_reference_preprocessed, image_sample_preprocessed ], open_order = 1)
-        
-        
-        image_reference_preprocessed = preprocessing_2(image_reference, threshold_config=threshold_config, bbox_invert=bbox_invert, counter=counter)[-1]
-        image_sample_preprocessed = preprocessing_2(image_sample, threshold_config=threshold_config, bbox_invert=bbox_invert, counter=counter+20)[-1]
-
-
-        ##############################
-        # Save Temp Images For Debug #
-        ##############################
-        #list_temp_save_image = [image_reference, image_sample, image_reference_preprocessed, image_sample_preprocessed]
-        #filename = ["image_reference" + str(counter), "image_sample" + str(counter), "image_reference_preprocessed" + str(counter), "image_sample_preprocessed" + str(counter)]
-        #save_image(list_temp_save_image, path="temp_files/extractor_difference/method-4", filename=filename, format="png")
-
-        """
-        cv2.imwrite("/home/alpplas/Desktop/subs/"+ str(counter) +"-1ref.png", image_reference)
-        cv2.imwrite("/home/alpplas/Desktop/subs/"+ str(counter) +"-2sample.png", image_sample)
-        cv2.imwrite("/home/alpplas/Desktop/subs/"+ str(counter) +"-3ref_pro.png", image_reference_preprocessed)
-        cv2.imwrite("/home/alpplas/Desktop/subs/"+ str(counter) +"-4sample_pro.png", image_sample_preprocessed)
-        """
-        
-        
-    # SUBTRACTING
-    image_subtracted_prc = cv2.subtract(image_sample_preprocessed, image_reference_preprocessed)
-    contours, _ = cv2.findContours(image_subtracted_prc, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    centroid_contour = contour_Centroids(contours)
+    # lower = np.array(dict_color_symbol_extraction[object_color]["BGR"]['lower'], dtype="uint8")
+    # upper = np.array(dict_color_symbol_extraction[object_color]["BGR"]['upper'], dtype="uint8")
+    # th = cv2.inRange(frame, lower, upper)
     
-    
-    if method == 5:
-        image_subtracted_prc = cv2.subtract(image_sample_preprocessed, image_reference_preprocessed)
-        
-        image_subtracted_prc_rso, contours, all_contour_area, will_be_removed_buffer, not_removed_buffer = remove_Small_Object(
-            image_subtracted_prc.copy(),
-            #is_contour_number_for_area=True,
-            # is_filter=is_filter, 
-            ratio=rso_ratio#70,
-        )
-        
-        image_sample_masked_gray_removed_small_objects = image_subtracted_prc_rso
-        
-        centroid_contour = contour_Centroids(not_removed_buffer)
-        
-        #show_pack = [image_subtracted_prc, image_subtracted_prc_rso]
-        #show_image(show_pack, open_order=1, window=window)
-
-        """
-        list_temp_save_image = [image_reference, image_sample, image_reference_preprocessed, image_sample_preprocessed, image_subtracted_prc, image_subtracted_prc_rso]
-        filename = [str(counter)+"_1ref", str(counter)+"_2sample", str(counter)+"_3ref_pre", str(counter)+"_4sample_pre", str(counter)+"_5prc", str(counter)+"_6rso"]
-        save_image(list_temp_save_image, path="temp_files/extractor_difference/method-5", filename=filename, format="png")
-        """
-        if activate_debug_images:
-            save_image([image_reference], path="Operator_Debug/pano_symbols/reference_symbols", filename=[str(counter)+"_1_ref"], format="png")
-            save_image([image_reference_preprocessed], path="Operator_Debug/pano_symbols/reference_preprocessed", filename=[str(counter)+"_2_ref_prep"], format="png")
-            save_image([image_sample], path="Operator_Debug/pano_symbols/sample_symbols", filename=[str(counter)+"_3_sample"], format="png")
-            save_image([image_sample_preprocessed], path="Operator_Debug/pano_symbols/sample_preprocessed", filename=[str(counter)+"_4_sample_prep"], format="png")
-            save_image([image_subtracted_prc], path="Operator_Debug/pano_symbols/extractor_symbols", filename=[str(counter)+"_5_subtracted_add"], format="png")
-            save_image([image_subtracted_prc_rso], path="Operator_Debug/pano_symbols/rso_symbols", filename=[str(counter)+"_6_rso"], format="png")
-
-    if method == 4:
-        #image_subtracted_prc_ref = image_reference_preprocessed - image_sample_preprocessed
-        #image_subtracted_prc_sample = image_sample_preprocessed - image_reference_preprocessed
-        #image_subtracted_prc_ref_sample = image_subtracted_prc_ref | image_subtracted_prc_sample
-        image_subtracted_prc_sample = cv2.subtract(image_sample_preprocessed, image_reference_preprocessed)
-        image_subtracted_prc_ref = cv2.subtract(image_reference_preprocessed, image_sample_preprocessed)
-        #image_subtracted_prc_total = image_subtracted_prc_ref | image_subtracted_prc_sample
-
-        #show_image(image_subtracted_prc, open_order=1)
-        
-        #show_image([image_reference_preprocessed, image_sample_preprocessed, image_subtracted_prc], open_order=1)
-        
-        #pure = sword_of_justice(image_subtracted_prc_total, counter)
-
-
-        """image_subtracted_prc_rso, contours, all_contour_area, will_be_removed_buffer, not_removed_buffer = remove_Small_Object(
-            image_subtracted_prc_sample.copy(),
-            #is_contour_number_for_area=True,
-            # is_filter=is_filter, 
-            ratio=rso_ratio #100, #70
-        )"""
-
-
-        image_subtracted_prc = cv2.add(image_subtracted_prc_ref, image_subtracted_prc_sample)
-
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2) )
-        # dilate = cv2.dilate(image_subtracted_prc, kernel, iterations = 1) # 1
-        dilate = cv2.morphologyEx(image_subtracted_prc, cv2.MORPH_CLOSE, kernel, iterations = 1)
-        erode = cv2.erode(dilate, kernel, iterations = 1) # 2
-
-        image_subtracted_prc_rso, contours, _, _, not_removed_buffer = remove_Small_Object(
-            erode.copy(),
-            #is_contour_number_for_area=True,
-            # is_filter=is_filter, 
-            ratio=rso_ratio #100, #70
-        )
-
-        res = cv2.dilate(image_subtracted_prc_rso, kernel, iterations = 1)
-
-
-        
-        image_sample_masked_gray_removed_small_objects = res
-        
-        centroid_contour = contour_Centroids(not_removed_buffer)
-        
-        ##############################
-        # Save Temp Images For Debug #
-        ##############################
-        """
-        list_temp_save_image = [image_reference, image_sample, image_reference_preprocessed, image_sample_preprocessed, image_subtracted_prc, dilate, erode, image_subtracted_prc_rso, res]
-        filename = [str(counter)+"_1ref", str(counter)+"_2sample", str(counter)+"_3ref_pre", str(counter)+"_4sample_pre", str(counter)+"_5prc_total", str(counter)+"_6dilate", str(counter)+"_7erode" , str(counter)+"_8rso",  str(counter)+"_9res"]
-        save_image(list_temp_save_image, path="temp_files/extractor_difference/method-4", filename=filename, format="png")
-        """
-        if activate_debug_images:
-            save_image([image_reference], path="Operator_Debug/pano_symbols/reference_symbols", filename=[str(counter)+"_1_ref"], format="png")
-            save_image([image_reference_preprocessed], path="Operator_Debug/pano_symbols/reference_preprocessed", filename=[str(counter)+"_2_ref_prep"], format="png")
-            save_image([image_sample], path="Operator_Debug/pano_symbols/sample_symbols", filename=[str(counter)+"_3_sample"], format="png")
-            save_image([image_sample_preprocessed], path="Operator_Debug/pano_symbols/sample_preprocessed", filename=[str(counter)+"_4_sample_prep"], format="png")
-            save_image([image_subtracted_prc], path="Operator_Debug/pano_symbols/extractor_symbols", filename=[str(counter)+"_5_subtracted_add"], format="png")
-            save_image([image_subtracted_prc_rso], path="Operator_Debug/pano_symbols/rso_symbols", filename=[str(counter)+"_6_rso"], format="png")
-        
-    if method == 6:
-        image_reference_preprocessed = preprocessing_black(image_reference, threshold_config=threshold_config, counter=counter+1)
-        image_sample_preprocessed = preprocessing_black(image_sample, threshold_config=threshold_config, counter=counter+1)
-        
-        ##########################################################3
-        ##########################################################3
-        """
-        image_sample_preprocessed_prunned = pruning(image_sample_preprocessed, method=2)
-        image_reference_preprocessed_prunned = pruning(image_reference_preprocessed, method=2)
-        show_pack = [
-            image_reference_preprocessed, image_reference_preprocessed_prunned, 
-            image_sample_preprocessed, image_sample_preprocessed_prunned
-        ]
-        show_image( show_pack , open_order=2)
-
-        image_reference_preprocessed = image_reference_preprocessed_prunned.copy()
-        image_sample_preprocessed = image_sample_preprocessed_prunned.copy()
-        """
-        ##########################################################3
-        ##########################################################3
-
-        image_subtracted_prc_negative = cv2.subtract(image_sample_preprocessed, image_reference_preprocessed)
-        image_subtracted_prc_positive  = cv2.subtract(image_reference_preprocessed, image_sample_preprocessed)
-
-        image_subtracted_prc = image_subtracted_prc_positive | image_subtracted_prc_negative
-        image_subtracted_prc_or = image_subtracted_prc.copy()
-
-        # show_image( image_subtracted_prc, title="before rso", open_order=1) 
-
-        if type(rso_ratio) != int:
-            rso_ratio1 = rso_ratio[0]
-            rso_ratio2 = rso_ratio[1]
-        else:
-            rso_ratio1 = rso_ratio
-            rso_ratio2 = 2
-
-        image_subtracted_prc_rso, contours, all_contour_area, will_be_removed_buffer, not_removed_buffer = remove_Small_Object(
-            image_subtracted_prc.copy(),
-            #is_contour_number_for_area=True,
-            # is_filter=is_filter, 
-            ratio=rso_ratio1 #5,
-        )
-        # __after_rso = image_subtracted_prc.copy()
-
-        # image_subtracted_prc = cv2.subtract(image_subtracted_prc_rso_negative, image_subtracted_prc_rso_positive)
-        image_subtracted_prc_rso_temp = image_subtracted_prc_rso.copy()
-
-        ##########################################################3
-        ##########################################################3
-        ##########################################################3
-        
-        if image_subtracted_prc_rso.any() == 1:
-            kernel_opening = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3) )
-            # kernel_opening = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (12, 12) )
-            image_subtracted_prc_rso = cv2.morphologyEx(image_subtracted_prc_rso, cv2.MORPH_ERODE, kernel_opening) 
-            image_subtracted_prc_rso = cv2.morphologyEx(image_subtracted_prc_rso, cv2.MORPH_DILATE, kernel_opening) 
-            # show_image( [__after_rso, image_subtracted_prc], title=["after rso", "after MORPH_CLOSE"] , open_order=2)
-        
-        image_subtracted_prc_rso_2, contours, all_contour_area, will_be_removed_buffer, not_removed_buffer = remove_Small_Object(
-            image_subtracted_prc_rso.copy(),
-            #is_contour_number_for_area=True,
-            # is_filter=is_filter, 
-            ratio=rso_ratio2,
-        )
-        
-        ##########################################################3
-        ##########################################################3
-        ##########################################################3
-        ##########################################################3
-        
-        #show_image([image_reference, image_sample, image_reference_preprocessed, image_sample_preprocessed, image_subtracted_prc_positive, image_subtracted_prc_rso_positive, image_subtracted_prc_negative, image_subtracted_prc_rso_negative, image_subtracted_prc, image_subtracted_prc_rso], title='S', open_order=2)
-        
-        
-        ##############################
-        # Save Temp Images For Debug #
-        ##############################
-        #list_temp_save_image = [image_reference, image_sample, image_reference_preprocessed, image_sample_preprocessed, image_subtracted_prc_positive, image_subtracted_prc_negative, image_subtracted_prc_or, image_subtracted_prc_rso, image_subtracted_prc_rso_2]
-        #filename = ["image_reference" + str(counter), "image_sample" + str(counter), "image_reference_preprocessed" + str(counter), "image_sample_preprocessed" + str(counter), "image_subtracted_prc_positive" + str(counter), "image_subtracted_prc_negative" + str(counter), "image_subtracted_prc_or" + str(counter), "image_subtracted_prc_rso" + str(counter), "image_subtracted_prc_rso_2" + str(counter)]
-        #save_image(list_temp_save_image, path="temp_files/extractor_difference/method-6", filename=filename, format="png")
-        
-        """
-        cv2.imwrite("/home/alpplas/Desktop/subs/"+ str(counter) +"-1ref.png", image_reference)
-        cv2.imwrite("/home/alpplas/Desktop/subs/"+ str(counter) +"-2sample.png", image_sample)
-        cv2.imwrite("/home/alpplas/Desktop/subs/"+ str(counter) +"-3ref_pro.png", image_reference_preprocessed)
-        cv2.imwrite("/home/alpplas/Desktop/subs/"+ str(counter) +"-4sample_pro.png", image_sample_preprocessed)
-        cv2.imwrite("/home/alpplas/Desktop/subs/"+ str(counter) +"-5prc_pos.png", image_subtracted_prc_positive)
-        cv2.imwrite("/home/alpplas/Desktop/subs/"+ str(counter) +"-6prc_neg.png", image_subtracted_prc_negative)
-        cv2.imwrite("/home/alpplas/Desktop/subs/"+ str(counter) +"-7prc_or.png", image_subtracted_prc_or)
-        cv2.imwrite("/home/alpplas/Desktop/subs/"+ str(counter) +"-8prc_rso.png", image_subtracted_prc_rso)
-        cv2.imwrite("/home/alpplas/Desktop/subs/"+ str(counter) +"-9prc_rso2.png", image_subtracted_prc_rso_2)
-        """
-        
-
-
-        image_sample_masked_gray_removed_small_objects = image_subtracted_prc_rso
-        
-        centroid_contour = contour_Centroids(not_removed_buffer)
-
-        """
-        list_temp_save_image = [image_reference, image_sample, image_reference_preprocessed, image_sample_preprocessed, image_subtracted_prc_positive, image_subtracted_prc_negative, image_subtracted_prc_or, image_subtracted_prc_rso, image_subtracted_prc_rso_2]
-        filename = [str(counter)+"_1ref", str(counter)+"_2sample", str(counter)+"_3ref_pre", str(counter)+"_4sample_pre", str(counter)+"_5prc_pos", str(counter)+"_6prc_neg",  str(counter)+"_7prc_or", str(counter)+"_8prc_rso", str(counter)+"_9prc_rso_2"]
-        save_image(list_temp_save_image, path="temp_files/extractor_difference/method-6/", filename=filename, format="png")
-        """
-        if activate_debug_images:
-            save_image([image_reference], path="Operator_Debug/pano_symbols/reference_symbols", filename=[str(counter)+"_1_ref"], format="png")
-            save_image([image_reference_preprocessed], path="Operator_Debug/pano_symbols/reference_preprocessed", filename=[str(counter)+"_2_ref_prep"], format="png")
-            save_image([image_sample], path="Operator_Debug/pano_symbols/sample_symbols", filename=[str(counter)+"_3_sample"], format="png")
-            save_image([image_sample_preprocessed], path="Operator_Debug/pano_symbols/sample_preprocessed", filename=[str(counter)+"_4_sample_prep"], format="png")
-            save_image([image_subtracted_prc], path="Operator_Debug/pano_symbols/extractor_symbols", filename=[str(counter)+"_5_subtracted_add"], format="png")
-            save_image([image_subtracted_prc_rso], path="Operator_Debug/pano_symbols/rso_symbols", filename=[str(counter)+"_6_rso"], format="png")
-
-    if method == 7:
-        image_reference_preprocessed = preprocessing_4(image_reference, threshold_config)
-        image_sample_preprocessed = preprocessing_4(image_sample, threshold_config)
-        
-        #image_subtracted_prc = cv2.subtract(image_sample_preprocessed, image_reference_preprocessed)
-        image_subtracted_prc_sample = cv2.subtract(image_sample_preprocessed, image_reference_preprocessed)
-        image_subtracted_prc_ref = cv2.subtract(image_reference_preprocessed, image_sample_preprocessed)
-        image_subtracted_prc = cv2.add(image_subtracted_prc_ref, image_subtracted_prc_sample)
-
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2) )
-        # dilate = cv2.dilate(image_subtracted_prc, kernel, iterations = 1) # 1
-        dilate = cv2.morphologyEx(image_subtracted_prc, cv2.MORPH_CLOSE, kernel, iterations = 1)
-        erode = cv2.erode(dilate, kernel, iterations = 1)
-
-
-        image_subtracted_prc_rso, contours, all_contour_area, will_be_removed_buffer, not_removed_buffer = remove_Small_Object(
-            erode.copy(),
-            #is_contour_number_for_area=True,
-            # is_filter=is_filter, 
-            ratio=rso_ratio
-        )
-        res = cv2.dilate(image_subtracted_prc_rso, kernel, iterations = 1)
-
-        
-        image_sample_masked_gray_removed_small_objects = res
-        #contours, _ = cv2.findContours(image_subtracted_prc, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        centroid_contour = contour_Centroids(not_removed_buffer)
-        
-        #show_pack = [image_reference, image_sample, image_reference_preprocessed, image_sample_preprocessed, image_subtracted_prc, image_subtracted_prc_rso]
-        #show_image(show_pack, open_order=2, window=True)
-        """
-        list_temp_save_image = [image_reference, image_sample, image_reference_preprocessed, image_sample_preprocessed, image_subtracted_prc, dilate, erode, image_subtracted_prc_rso, res]
-        filename = [str(counter)+"_1ref", str(counter)+"_2sample", str(counter)+"_3ref_pre", str(counter)+"_4sample_pre", str(counter)+"_5prc_total", str(counter)+"_6dilate", str(counter)+"_7erode" , str(counter)+"_8rso",  str(counter)+"_9res"]
-        save_image(list_temp_save_image, path="temp_files/extractor_difference/method-7", filename=filename, format="png")
-        """
-        if activate_debug_images:
-            save_image([image_reference], path="Operator_Debug/pano_symbols/reference_symbols", filename=[str(counter)+"_1_ref"], format="png")
-            save_image([image_reference_preprocessed], path="Operator_Debug/pano_symbols/reference_preprocessed", filename=[str(counter)+"_2_ref_prep"], format="png")
-            save_image([image_sample], path="Operator_Debug/pano_symbols/sample_symbols", filename=[str(counter)+"_3_sample"], format="png")
-            save_image([image_sample_preprocessed], path="Operator_Debug/pano_symbols/sample_preprocessed", filename=[str(counter)+"_4_sample_prep"], format="png")
-            save_image([image_subtracted_prc], path="Operator_Debug/pano_symbols/extractor_symbols", filename=[str(counter)+"_5_subtracted_add"], format="png")
-            save_image([image_subtracted_prc_rso], path="Operator_Debug/pano_symbols/rso_symbols", filename=[str(counter)+"_6_rso"], format="png")
-
-    if method == 8:
-        #image_reference_preprocessed = preprocessing_4(image_reference, threshold_config)
-        #image_sample_preprocessed = preprocessing_4(image_sample, threshold_config)
-        
-        #image_subtracted_prc = cv2.subtract(image_sample_preprocessed, image_reference_preprocessed)
-        image_subtracted_prc_sample = cv2.subtract(image_sample_preprocessed, image_reference_preprocessed)
-        image_subtracted_prc_ref = cv2.subtract(image_reference_preprocessed, image_sample_preprocessed)
-        image_subtracted_prc = cv2.add(image_subtracted_prc_ref, image_subtracted_prc_sample)
-
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2) )
-        # dilate = cv2.dilate(image_subtracted_prc, kernel, iterations = 1) # 1
-        dilate = cv2.morphologyEx(image_subtracted_prc, cv2.MORPH_OPEN, kernel, iterations = 1)
-        erode = cv2.erode(dilate, kernel, iterations = 1)
-
-
-        image_subtracted_prc_rso, contours, all_contour_area, will_be_removed_buffer, not_removed_buffer = remove_Small_Object(
-            erode.copy(),
-            #is_contour_number_for_area=True,
-            # is_filter=is_filter, 
-            ratio=rso_ratio
-        )
-        res = cv2.dilate(image_subtracted_prc_rso, kernel, iterations = 1)
-
-        
-        image_sample_masked_gray_removed_small_objects = res
-        #contours, _ = cv2.findContours(image_subtracted_prc, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        centroid_contour = contour_Centroids(not_removed_buffer)
-        
-        #show_pack = [image_reference, image_sample, image_reference_preprocessed, image_sample_preprocessed, image_subtracted_prc, image_subtracted_prc_rso]
-        #show_image(show_pack, open_order=2, window=True)
-        """
-        list_temp_save_image = [image_reference, image_sample, image_reference_preprocessed, image_sample_preprocessed, image_subtracted_prc, dilate, erode, image_subtracted_prc_rso, res]
-        filename = [str(counter)+"_1ref", str(counter)+"_2sample", str(counter)+"_3ref_pre", str(counter)+"_4sample_pre", str(counter)+"_5prc_total", str(counter)+"_6dilate", str(counter)+"_7erode" , str(counter)+"_8rso",  str(counter)+"_9res"]
-        save_image(list_temp_save_image, path="temp_files/extractor_difference/method-8", filename=filename, format="png")
-        """
-        if activate_debug_images:
-            save_image([image_reference], path="Operator_Debug/pano_symbols/reference_symbols", filename=[str(counter)+"_1_ref"], format="png")
-            save_image([image_reference_preprocessed], path="Operator_Debug/pano_symbols/reference_preprocessed", filename=[str(counter)+"_2_ref_prep"], format="png")
-            save_image([image_sample], path="Operator_Debug/pano_symbols/sample_symbols", filename=[str(counter)+"_3_sample"], format="png")
-            save_image([image_sample_preprocessed], path="Operator_Debug/pano_symbols/sample_preprocessed", filename=[str(counter)+"_4_sample_prep"], format="png")
-            save_image([image_subtracted_prc], path="Operator_Debug/pano_symbols/extractor_symbols", filename=[str(counter)+"_5_subtracted_add"], format="png")
-            save_image([image_subtracted_prc_rso], path="Operator_Debug/pano_symbols/rso_symbols", filename=[str(counter)+"_6_rso"], format="png")
-    
-    # MASKING
-    # image_sample_masked_prc = cv2.bitwise_or(image_sample_gray, image_sample_gray, mask=image_subtracted_prc)
-    stop_diff = time.time() - start_diff
-
-    start_rso = time.time()
-    # src, contours, buffer, removed_buffer, not_removed_buffer
-    """
-    image_sample_masked_gray_removed_small_objects, contours, all_contour_area, will_be_removed_buffer, not_removed_buffer = remove_Small_Object(
-        image_subtracted_prc.copy(),
-        is_contour_number_for_area=is_contour_number_for_area,
-        ratio=ratio, 
-        buffer_percentage=buffer_percentage, 
-        is_filter=is_filter, 
-        filter_lower_ratio=filter_lower_ratio, 
-        filter_upper_ratio=filter_upper_ratio
-    )
-    """
-    
-    ####EXTRA####
-    image_sample_masked_gray_removed_small_objects, contours, all_contour_area, will_be_removed_buffer, not_removed_buffer = remove_Small_Object(
-        image_subtracted_prc.copy(),
-        ratio=5,
-    )
-    """
-    contours, _ = cv2.findContours(image_subtracted_prc, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    image_sample_masked_gray_removed_small_objects = image_subtracted_prc.copy()
-    for _, cnt in enumerate(contours):
-        if cv2.contourArea(cnt) < 5:
-            cv2.drawContours(image_sample_masked_gray_removed_small_objects, [cnt], 0, (0,0,0), -1)
-    """
-    stop_rso = time.time() - start_rso
-    ##############
-    
-    
-    # import pdb; pdb.set_trace()
-    
-    
-    start_draw = time.time()
-    if method == 2:
-        """th = threshold(image_subtracted_prc.copy(), configs=[1,255])
+    if (object_color == 'white') or (object_color == 'gray - siyah sembol'): 
         th = cv2.bitwise_not(th)
-        kernel = np.array([ [1,1,1], 
-                            [1,1,1], 
-                            [1,1,1]])
-        erode = cv2.filter2D(th, -1, kernel, cv2.BORDER_DEFAULT)
-        erode = cv2.bitwise_not(erode)"""
         
-        image_subtracted_prc_negative = cv2.subtract(image_sample_preprocessed, image_reference_preprocessed)
-        image_subtracted_prc_positive  = cv2.subtract(image_reference_preprocessed, image_sample_preprocessed)
-        
-        image_subtracted_prc = cv2.add(image_subtracted_prc_positive, image_subtracted_prc_negative)
+    return th
 
-        
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2) )
-        erode = cv2.erode(image_subtracted_prc, kernel, iterations = 2)
 
-        rso = remove_Small_Object(erode.copy(), is_chosen_max_area=True, ratio=1)[0] #50
-        
-        res = cv2.dilate(rso, kernel, iterations = 1)
-        #res = cv2.erode(res, kernel, iterations = 1)
-        
-        #kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10, 10) )
-        #dilation = cv2.dilate(rso, kernel, iterations = 5)
-        
-        contours, _ = cv2.findContours(rso, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        #print("METHOD-2_CNTS:", contours)
-        centroid_contour = contour_Centroids(contours)
-
-        """
-        list_temp_save_image = [image_reference, image_sample, image_reference_preprocessed, image_sample_preprocessed, image_subtracted_prc_negative, image_subtracted_prc_positive, image_subtracted_prc, erode, rso, res]
-        filename = [str(counter)+"_1ref", str(counter)+"_2sample", str(counter)+"_3ref_pre", str(counter)+"_4sample_pre", str(counter)+"_5prc_negative", str(counter)+"_6prc_positive", str(counter)+"_7prc_add", str(counter)+"_8erode", str(counter)+"_9rso", str(counter)+"_10res"]
-        save_image(list_temp_save_image, path="temp_files/extractor_difference/", filename=filename, format="png")
-        """
-        if activate_debug_images:
-            save_image([image_reference], path="Operator_Debug/pano_symbols/reference_symbols", filename=[str(counter)+"_1_ref"], format="png")
-            save_image([image_reference_preprocessed], path="Operator_Debug/pano_symbols/reference_preprocessed", filename=[str(counter)+"_2_ref_prep"], format="png")
-            save_image([image_sample], path="Operator_Debug/pano_symbols/sample_symbols", filename=[str(counter)+"_3_sample"], format="png")
-            save_image([image_sample_preprocessed], path="Operator_Debug/pano_symbols/sample_preprocessed", filename=[str(counter)+"_4_sample_prep"], format="png")
-            save_image([image_subtracted_prc], path="Operator_Debug/pano_symbols/extractor_symbols", filename=[str(counter)+"_5_subtracted_add"], format="png")
-            save_image([rso], path="Operator_Debug/pano_symbols/rso_symbols", filename=[str(counter)+"_6_rso"], format="png")
-        
-        
-    if draw_diff:
-        image_sample[image_sample_masked_gray_removed_small_objects != 0] = fill_color
+def extractor_difference(
+        image_reference, 
+        image_sample, 
+        method=1, 
+        sobel_scale=1, 
+        sharp_scale=3, 
+        is_contour_number_for_area=False, 
+        ratio=0, 
+        buffer_percentage=95, 
+        is_filter=False, 
+        filter_lower_ratio=10, 
+        filter_upper_ratio=250, 
+        threshold_config=[-1, 3],
+        draw_diff=False, 
+        draw_diff_circle=False, 
+        fill_color=[0, 0, 255], 
+        rso_ratio=5,
+        decision_ratio=10,
+        window=False, 
+        bbox_invert=False, 
+        counter=0, 
+        activate_debug_images=False,
+        kernel = [2,2],
+        dilate_iteration=1,
+        erode_iteration=1,
+        pixel_width=2,
+        pixel_width_color=[0,0,255],
+        pano_sector='SL',
+        object_color='white', 
+        dict_color_symbol_extraction={},
+        image_processing_data_collector=None,
+        data_symbol_coords={},
+        symbol_start_coords=[],
+        redecession_learning_data_collector=None,
+    ):
     
-    if draw_diff_circle:
-        center_points = contour_Centroids(contours)
+    start_seq = time.time()
+    flag_symbol_type = 'char'
+    
+    #### #### #### #### #### ####
+    #### ## Pre-Processing ## ###
+    #### #### #### #### #### ####
+    start_preprocess = time.time()
+    
+    org_height, org_width, _ = image_reference.shape
+    image_reference_pad = image_reference.copy()
+    image_sample_pad = image_sample.copy()
+    
+    if (org_width / org_height > 3) or (org_height / org_width > 3): # Long-Thin Lines #
         
-        alpha = 0.7
-        beta = 1
-        frame_display = image_sample.copy()
-        roi = frame_display.copy()
-        for center_point in center_points:
-            draw_Circle(
-                roi,
-                tuple(center_point),
-                radius=35,
-                color=fill_color,
-                thickness=-1
-            )
-        image_sample = cv2.addWeighted(frame_display, alpha, roi, beta, 0.0)
-            
-    stop_draw = time.time() - start_draw
-    stop_total = time.time() - start_diff
+        if (object_color == 'white') or (object_color == 'gray - siyah sembol'): 
+            color = [255,255,255]
+        else:
+            color = [0,0,0]
+        
+        # Calculate padding sizes
+        if (org_width > org_height): # Reference is taller than wider
+            pad_top, pad_bottom = 20, 20
+            pad_left, pad_right = 5, 5
+        else:
+            pad_top, pad_bottom = 5, 5
+            pad_left, pad_right = 10, 10
+        image_reference_pad = cv2.copyMakeBorder(image_reference.copy(), pad_top, pad_bottom, pad_left, pad_right, cv2.BORDER_CONSTANT, None, value=color) # top, bottom, left, right,
+        image_sample_pad = cv2.copyMakeBorder(image_sample.copy(), pad_top, pad_bottom, pad_left, pad_right, cv2.BORDER_CONSTANT, None, value=color) # top, bottom, left, right,
+        
+        # padded_image_ref = np.zeros((org_width + pad_top + pad_bottom, org_height + pad_left + pad_right, 3), dtype=image_reference.dtype)
+        # padded_image_ref[:,:,:] = color
+        # padded_image_ref[pad_top:-pad_bottom, pad_left:-pad_right] = image_reference.copy()
+        # image_reference = padded_image_ref.copy()
+
+        # padded_image_sample = np.zeros((org_width + pad_top + pad_bottom, org_height + pad_left + pad_right, 3), dtype=image_sample.dtype)
+        # padded_image_sample[:,:,:] = color
+        # padded_image_sample[pad_top:-pad_bottom, pad_left:-pad_right] = image_sample
+        # image_sample = padded_image_sample.copy()
+        
+        flag_symbol_type = 'line'
+
+    elif (org_width <= 40) and (org_height <= 40): # small char #
+        flag_symbol_type = 'small_char'
     
-    """
-    stdo(1, "SUBSTRACTION TIMES -- DIFF: {:.3f} | RSO: {:.3f} | DRAW: {:.3f} | TOTAL: {:.3f}".format
-                (
-                    stop_diff,
-                    stop_rso,
-                    stop_draw,
-                    stop_total
-                )
-            )
-
-    print("TODO: remove - not_removed_buffer, image_subtracted_prc ON THE RETURN")
-    """
-    #TODO: remove - not_removed_buffer, image_subtracted_prc
-    return image_sample_masked_gray_removed_small_objects, image_sample, contours, not_removed_buffer, centroid_contour, image_subtracted_prc
-
-
-def excessive_1(src):
-    src_gray = cv2.cvtColor(src.copy(), cv2.COLOR_RGB2GRAY)
-    src_gray_gaus = cv2.GaussianBlur(src_gray.copy(), (3, 3), 0)
-    src_gray_gaus_lap = cv2.Laplacian(src_gray_gaus - src_gray, cv2.CV_64F, ksize=5, delta=0.5)
-
-    show_image(
-        (src, src_gray_gaus, src_gray_gaus_lap),
-        title=["src", "src_gray_gaus", "src_gray_gaus_lap"],
-        option="plot",
-        cmap="gray",
-        window=True,
-        open_order=1,
-    )
-
-    exit()
-    # import pdb
-
-
-def excessive_2(src, smpl, sharp_scale=10, is_smooth=False, smooth_scale=0, is_sharp=False):
-    from image_manipulation import median_blur
-
-    # SHARPING
-    src_sharpened = src.copy()
-    smpl_sharpened = smpl.copy()
-
-    for _ in range(sharp_scale):
-        src_sharpened = sharpening(src_sharpened)
-        smpl_sharpened = sharpening(smpl_sharpened)
-        if is_smooth:
-            configs = []
-            src_sharpened = median_blur(src_sharpened, configs=configs)
-            smpl_sharpened = median_blur(smpl_sharpened, configs=configs)
+    image_reference_preprocessed = preprocessing_5(image_reference_pad, object_color=object_color, dict_color_symbol_extraction=dict_color_symbol_extraction, pano_sector_index=pano_sector)
+    image_sample_preprocessed = preprocessing_5(image_sample_pad, object_color=object_color, dict_color_symbol_extraction=dict_color_symbol_extraction, pano_sector_index=pano_sector)
     
-    # SMOOTHING
-    src_smoothed = src_sharpened.copy()
-    smpl_smoothed = smpl_sharpened.copy()
-    configs = []
-    for _ in range(smooth_scale):
-        src_smoothed = median_blur(src_smoothed, configs=configs)
-        smpl_smoothed = median_blur(smpl_smoothed, configs=configs)
-        if is_sharp:
-            src_smoothed = sharpening(src_smoothed)
-            smpl_smoothed = sharpening(smpl_smoothed)
-
-    # src_gray = cv2.cvtColor(src_smoothed.copy(), cv2.COLOR_RGB2GRAY)
-    # smpl_gray = cv2.cvtColor(smpl_smoothed.copy(), cv2.COLOR_RGB2GRAY)
-
-    # src_gray_gaus = cv2.GaussianBlur(src.copy(), (3, 3), 0)
-    # src_gray_gaus_lap = cv2.Laplacian(src_gray_gaus - src_gray, cv2.CV_64F, ksize=5, delta=0.5)
-
-    # create a CLAHE object (Arguments are optional).
-    clahe = cv2.createCLAHE(clipLimit=18.0, tileGridSize=(18,18))
-    src_gray_cl = clahe.apply(src_smoothed)
-    smpl_gray_cl = clahe.apply(smpl_smoothed)
-
-    show_image(
-        (src_sharpened, smpl_sharpened, src_gray_cl, smpl_gray_cl),
-        #title=["src_sharpened", "smpl_sharpened", "src_sharpened_gray_cl", "smpl_sharpened_gray_cl"],
-        option="plot",
-        cmap="gray",
-        window=True,
-        open_order=2,
-    )
-
-    return src_gray_cl, smpl_gray_cl
-    # import pdb
-
-
-def excessive_3_sobel_gradient(src, smpl, sharp_scale=10, is_smooth=False, smooth_scale=0, is_sharp=False):
-    from image_manipulation import median_blur
-
-    # SHARPING
-    src_sharpened = src.copy()
-    smpl_sharpened = smpl.copy()
-
-    import pdb; pdb.set_trace();
-    for _ in range(sharp_scale):
-        src_sharpened = sharpening(src_sharpened, kernel_size=(5, 5), alpha=1.5, beta=-0.7, gamma=0, over_run = 0)
-        smpl_sharpened = sharpening(smpl_sharpened, kernel_size=(5, 5), alpha=1.5, beta=-0.7, gamma=0, over_run = 0)
-        if is_smooth:
-            configs = []
-            src_sharpened = median_blur(src_sharpened, configs=configs)
-            smpl_sharpened = median_blur(smpl_sharpened, configs=configs)
+    stop_preprocess = time.time() - start_preprocess
+    #### #### #### #### #### ####
+    #### #### #### #### #### ####
+    #### #### #### #### #### ####
     
-    # SMOOTHING
-    src_smoothed = src_sharpened.copy()
-    smpl_smoothed = smpl_sharpened.copy()
-    configs = []
-    for _ in range(smooth_scale):
-        src_smoothed = median_blur(src_smoothed, configs=configs)
-        smpl_smoothed = median_blur(smpl_smoothed, configs=configs)
-        if is_sharp:
-            src_smoothed = sharpening(src_smoothed)
-            smpl_smoothed = sharpening(smpl_smoothed)
-
-    """
-    # TEST FOR SOBEL
-    ksize = 15
-    sobelx_64F = cv2.Sobel(smpl.copy(), cv2.CV_64F, 1, 0, ksize=ksize)
-    sobely_64F = cv2.Sobel(smpl.copy(), cv2.CV_64F, 0, 1, ksize=ksize)
-    sobelx_8U = cv2.Sobel(smpl.copy(), cv2.CV_8U, 1, 0, ksize=ksize)
-    sobely_8U = cv2.Sobel(smpl.copy(), cv2.CV_8U, 0, 1, ksize=ksize)
-    show_image((sobelx_64F, sobely_64F, sobelx_8U, sobely_8U), open_order=1, window=True)
-    show_image(
-        (
-            sobelx_64F * sobelx_8U, 
-            sobely_64F * sobely_8U, 
-            sobelx_64F + sobely_64F + sobelx_8U + sobely_8U,
-            (sobelx_64F + sobely_64F) - (sobelx_8U + sobely_8U),
-            (sobelx_64F + sobely_64F) * (sobelx_8U + sobely_8U),
-            (sobelx_8U + sobely_8U) ** (sobelx_64F + sobely_64F)
-        ), 
-        open_order=1, 
-        window=True
-    )
-    # import pdb; pdb.set_trace();
-    # ksize = 1; sobely = cv2.Sobel(smpl.copy(), cv2.CV_64F, 0, 1, ksize=ksize); sobelx = cv2.Sobel(smpl.copy(), cv2.CV_64F, 1, 0, ksize=ksize); 
-    # ksize = 1; sobely = cv2.Sobel(smpl.copy(), cv2.CV_64F, 0, 1, ksize=ksize); sobelx = cv2.Sobel(smpl.copy(), cv2.CV_64F, 1, 0, ksize=ksize);
-    # show_image((sobelx, sobely, sobelx+sobely, sobelx-sobely, sobelx*sobely), open_order=1, window=True)
-    """
-
-    # src_gray = cv2.cvtColor(src_smoothed.copy(), cv2.COLOR_RGB2GRAY)
-    # smpl_gray = cv2.cvtColor(smpl_smoothed.copy(), cv2.COLOR_RGB2GRAY)
-
-    # src_gray_gaus = cv2.GaussianBlur(src.copy(), (3, 3), 0)
-    # src_gray_gaus_lap = cv2.Laplacian(src_gray_gaus - src_gray, cv2.CV_64F, ksize=5, delta=0.5)
-
-    # create a CLAHE object (Arguments are optional).
-    clahe = cv2.createCLAHE(clipLimit=18.0, tileGridSize=(18,18))
-    src_gray_cl = clahe.apply(src_smoothed)
-    smpl_gray_cl = clahe.apply(smpl_smoothed)
-
-    show_image(
-        (src_sharpened, smpl_sharpened, src_gray_cl, smpl_gray_cl),
-        #title=["src_sharpened", "smpl_sharpened", "src_sharpened_gray_cl", "smpl_sharpened_gray_cl"],
-        option="plot",
-        cmap="gray",
-        window=True,
-        open_order=2,
-    )
-
-    return src_gray_cl, smpl_gray_cl
-    # import pdb
-
-
-def excessive_4_preprocessing(image, is_sharp=True, is_sobel=True, is_threshold=True, window=False, sharp_scale=2, open_order=1, sobel_scale=0.05, threshold_config=[-1, -1]):
-    #BLUR
-    from image_manipulation import median_blur
-    blur = median_blur(image, configs=[3])
     
-    # SHARP
-    if is_sharp:
-        image_sharpened = blur
-        for _ in range(sharp_scale):
-            image_sharpened = sharpening(image_sharpened)
+    #### #### #### #### #### ####
+    #### ## Largest Contour # ###
+    #### #### #### #### #### ####
+    start_largest_contour = time.time()
+    
+    if (org_width / org_height > 3) or (org_height / org_width > 3): # Long-Thin Lines #
+        image_reference_preprocessed_largest_contour = image_reference_preprocessed
+        image_sample_preprocessed_largest_contour = image_sample_preprocessed
     else:
-        image_sharpened = image.copy()
+        image_reference_preprocessed_largest_contour = get_Largest_Contour_Object(image_reference_preprocessed)
+        image_sample_preprocessed_largest_contour = get_Largest_Contour_Object(image_sample_preprocessed)
+    
+    stop_largest_contour = time.time() - start_largest_contour
+    #### #### #### #### #### ####
+    #### #### #### #### #### ####
+    #### #### #### #### #### ####
+    
+    
+    #### #### #### #### #### ####
+    #### #### Hull #### #### ####
+    #### #### #### #### #### ####
+    start_hull = time.time()
+    
+    ref_contours, _ = get_Contours_and_Hull(image_reference_preprocessed_largest_contour.copy())
+    sample_contours, sample_hulls = get_Contours_and_Hull(image_sample_preprocessed_largest_contour.copy())
+    
+    dict_sample_symbol_contours = dict()
+    # dict_sample_symbol_contours.append(dict())
+    # dict_sample_symbol_contours[counter] --> counter = symbol_id
+    dict_sample_symbol_contours["pano_sector_index"] = pano_sector
+    dict_sample_symbol_contours["symbol_id"] = counter
+    
+    # area_hull = cv2.contourArea(sample_hulls[0])
+    # rect_hull = cv2.minAreaRect(sample_hulls[0])
+    # w_hull = rect_hull[1][0]
+    # h_hull = rect_hull[1][1]
+    # dict_sample_symbol_contours["hull_w"] = round(w_hull, 2)
+    # dict_sample_symbol_contours["hull_h"] = round(h_hull, 2)
+    # dict_sample_symbol_contours["hull_area"] = round(area_hull, 2)
+    # dict_sample_symbol_contours["hull_contours"] = sample_contours
+    
+    stop_hull = time.time() - start_hull
+    #### #### #### #### #### ####
+    #### #### #### #### #### ####
+    #### #### #### #### #### ####
+    
+    
+    #### #### #### #### #### ####
+    #### Warp Perspective ## ####
+    #### #### #### #### #### ####
+    start_warp_perspective = time.time()
+    
+    if (
+            (org_width / org_height > 3) or (org_height / org_width > 3) # Long-Thin Lines #
+        ) or (
+            (205 > org_width > 190) and (200 > org_height > 180) # beko -> o #
+        ):
 
-    # SOBEL
-    if is_sobel:
-        image_sharpened_sobel = sobel_gradient(image_sharpened, sobel_scale)
+        img_bbox_ref, ref_hulls, ref_img_box = draw_Hulls_and_Bbox(image_reference_preprocessed_largest_contour.copy(), ref_contours, flag_activate_debug_images=activate_debug_images)
+        img_bbox_sample, sample_hulls, sample_img_bbox = draw_Hulls_and_Bbox(image_sample_preprocessed_largest_contour.copy(), sample_contours, flag_activate_debug_images=activate_debug_images)
+        
+        if ref_img_box is not None and sample_img_bbox is not None:
+            M = cv2.getPerspectiveTransform(np.float32(sample_img_bbox), np.float32(ref_img_box))
+            warped_sample = cv2.warpPerspective(image_sample_preprocessed_largest_contour.copy(), M, (image_sample_preprocessed_largest_contour.shape[1], image_sample_preprocessed_largest_contour.shape[0]))
+            image_sample_pad_warped = cv2.warpPerspective(image_sample_pad.copy(), M, (image_sample_pad.shape[1], image_sample_pad.shape[0]))
+        else:
+            warped_sample = image_sample_preprocessed_largest_contour.copy()
+            image_sample_pad_warped = image_sample_pad.copy()
+        image_sample_preprocessed_largest_contour = warped_sample
+    else: # beko -> e #
+        img_bbox_ref = image_reference_preprocessed_largest_contour.copy()
+        img_bbox_sample = image_sample_preprocessed_largest_contour.copy()
+        image_sample_pad_warped = image_sample_pad.copy()
+        
+    stop_warp_perspective = time.time() - start_warp_perspective
+    #### #### #### #### #### ####
+    #### #### #### #### #### ####
+    #### #### #### #### #### ####
+    
+    
+    #### #### #### #### #### ####
+    #### ## Edge Detection # ####
+    #### #### #### #### #### ####
+    start_edge_detection = time.time()
+    
+    roberts_ref = roberts(image_reference_preprocessed_largest_contour)
+    roberts_ref = img_as_ubyte(roberts_ref)
+    _, roberts_ref = cv2.threshold(roberts_ref, 0, 255, cv2.THRESH_OTSU)
+    contours_roberts_ref, _ = cv2.findContours(roberts_ref, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    len_contours_roberts_ref = len(contours_roberts_ref)
+    
+    roberts_sample = roberts(image_sample_preprocessed_largest_contour)
+    roberts_sample = img_as_ubyte(roberts_sample)
+    _, roberts_sample = cv2.threshold(roberts_sample, 0, 255, cv2.THRESH_OTSU)
+    contours_roberts_sample, _ = cv2.findContours(roberts_sample, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    len_contours_roberts_sample = len(contours_roberts_sample)
+    
+    stop_edge_detection = time.time() - start_edge_detection
+    #### #### #### #### #### ####
+    #### #### #### #### #### ####
+    #### #### #### #### #### ####
+    
+    
+    #### #### #### #### #### ####
+    #### ### Subtracting ### ####
+    #### #### #### #### #### ####
+    start_subtract = time.time()
+    
+    diff = cv2.absdiff(image_reference_preprocessed_largest_contour, image_sample_preprocessed_largest_contour)
+    mask = edge_Image_Masking(diff_image=diff, edge_image_sample=roberts_sample)
+    
+    stop_subtract = time.time() - start_subtract
+    #### #### #### #### #### ####
+    #### #### #### #### #### ####
+    #### #### #### #### #### ####
+    
+    
+    #### #### #### #### #### #### ####
+    ## Detect Inside-Outside Faults ##
+    #### #### #### #### #### #### ####
+    start_elim = time.time()
+    
+    if activate_debug_images:
+        draw_org_diff, list_inside, list_outside = diff_Image_Masking(org_image=image_sample_pad_warped, diff_image=diff, edge_image_sample=roberts_sample, edge_image_ref=roberts_ref)
+    
+    # image_sample_preprocessed_largest_contour_not = cv2.bitwise_not(image_sample_preprocessed_largest_contour)
+    # combine_diff_outside_real_fault = cv2.bitwise_and(diff, image_sample_preprocessed_largest_contour_not)
+    
+    image_sample_preprocessed_largest_contour_not = cv2.bitwise_not(image_sample_preprocessed_largest_contour)
+    diff_outside = cv2.bitwise_and(mask, image_sample_preprocessed_largest_contour_not)
+    _, diff_outside = cv2.threshold(diff_outside, 0, 255, cv2.THRESH_OTSU)
+    contours_outside, _ = cv2.findContours(diff_outside, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+    diff_inside = cv2.subtract(cv2.bitwise_and(mask, image_sample_preprocessed_largest_contour), roberts_sample)
+    _, diff_inside = cv2.threshold(diff_inside, 0, 255, cv2.THRESH_OTSU)
+    contours_inside, _ = cv2.findContours(diff_inside, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        
+    stop_elim = time.time() - start_elim
+    #### #### #### #### #### #### ####
+    #### #### #### #### #### #### ####
+    #### #### #### #### #### #### ####
+    
+    
+    #### #### #### #### #### ####
+    #### Distance Transform #####
+    #### #### #### #### #### ####
+    start_dt = time.time()
+    
+    if (org_width / org_height > 6) or (org_height / org_width > 6): # Long-Thin Lines #
+        rpw_method = 8
     else:
-        image_sharpened_sobel = image_sharpened.copy()
-
-    # THRESHOLD
-    if is_threshold:
-        image_sharpened_sobel_threshold = threshold(
-            image_sharpened_sobel.copy(), configs=[-1,3])
+        rpw_method = 6
+        
+        
+    temp_flag_symbol_type = point_In_Bbox_Match(point=symbol_start_coords, bboxes=data_symbol_coords[pano_sector])
+    if temp_flag_symbol_type is not None:
+        flag_symbol_type = temp_flag_symbol_type
+        pixel_width = data_symbol_coords[pano_sector][flag_symbol_type]['pano_rpw_ratio']
     else:
-        image_sharpened_sobel_threshold = image_sharpened_sobel.copy()
+        pixel_width = data_symbol_coords[pano_sector][flag_symbol_type]['pano_rpw_ratio']
 
-
-    # MORPH
-    kernel_opening = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(3,3))
-    openinig = cv2.morphologyEx(image_sharpened_sobel_threshold, cv2.MORPH_OPEN, kernel_opening)
+    pixel_width = normalize_Comma_to_Dot_Float(float(pixel_width))
+    rpw_ratio_px = pixel_width * 20.244 # (83px -> 4,10mm | 1px -> 0.0494mm | 1mm -> 20.244px) mm to px # Edit 21.07.2025   
+     
     
-    #kernel_erode = np.ones((5,5), np.uint8)
-    #erosion = cv2.erode(openinig, kernel_erode, iterations=1)
+    if activate_debug_images:
+        ropw_color_outside, _ = remove_Pixel_Width(diff_outside.copy(), contours_outside, pixel_width=rpw_ratio_px, pixel_width_color=pixel_width_color, method=rpw_method, counter=counter, pano_sector_index=pano_sector, symbol_hull_list=sample_hulls, is_color=True, title='outside')
+        ropw_color_inside, _ = remove_Pixel_Width(diff_inside.copy(), contours_inside, pixel_width=rpw_ratio_px, pixel_width_color=pixel_width_color, method=rpw_method, counter=counter, pano_sector_index=pano_sector, symbol_hull_list=sample_hulls, is_color=True, title='inside')
     
-    #kernel_opening2 = cv2.getStructuringElement(cv2.MORPH_RECT,(6,6))
-    #openinig2 = cv2.morphologyEx(openinig, cv2.MORPH_OPEN, kernel_opening2)
-    rso = remove_Small_Object(openinig.copy(), ratio=10)[0]
+    rpw_outside, dict_rpw_contours = remove_Pixel_Width(diff_outside.copy(), contours_outside, pixel_width=rpw_ratio_px, method=rpw_method, counter=counter, pano_sector_index=pano_sector, symbol_hull_list=sample_hulls, title='outside')
+    contours_outside, _ = cv2.findContours(rpw_outside, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     
-    # FILLED
-    """filled = closing.copy()
-    contours, _ = cv2.findContours(closing, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    for c in (contours):
-        cv2.fillPoly(filled, pts=[c], color=(255,255,255))
-    #combine = cv2.bitwise_and(closing, filled)
-    """
-    #fill = image_sharpened_sobel.copy()
-    #h, w = image.shape[:2]
-    #mask = np.zeros((h+2, w+2), np.uint8)
-    #cv2.floodFill(fill, mask, (0,0), 255, cv2.FLOODFILL_MASK_ONLY)
-    #fill_not = cv2.bitwise_not(fill)
-    #combine = image_sharpened_sobel | fill
-
-    return image, blur, image_sharpened, image_sharpened_sobel, image_sharpened_sobel_threshold, openinig, rso
-
-def excessive_4(src, smpl):
-    ref = excessive_4_preprocessing(src.copy(), sharp_scale=2, sobel_scale=1, window=True)
-    sample = excessive_4_preprocessing(smpl.copy(),  sharp_scale=2, sobel_scale=1, window=True)
-
-    show_pack = [*ref, *sample]
-    show_image(show_pack, open_order=2, window=True)
-    return ref[-1], sample[-1]
-
-
-def main():
-    global arguments
-
-    arguments = argument_control()
-    argument_info()
-
-    if arguments["test_windows"]:
-        window = True
+    if flag_symbol_type == 'line':
+        rpw_ratio_px_for_outside = rpw_ratio_px
     else:
-        window = False
-
-    # To log the time passed, initialize the time logger
-    time_log(id="background_substraction")
-    stdo(1, "Program Started.")
-
-    #########
-    # START #
-    #########
-    # OPEN IMAGES
-
-    ###################
-    image_reference = open_image(arguments["reference"], option = "cv2-rgb", is_numpy=True)
-    image_test = open_image(arguments["input"], option = "cv2-rgb", is_numpy=True)
+        rpw_ratio_px_for_outside = 0.1 * 20.244 # 0.1mm * 20.244px -> 2.0244px
     
-    image_reference_gray = cv2.cvtColor(image_reference.copy(), cv2.COLOR_RGB2GRAY)
-    image_sample_gray= cv2.cvtColor(image_test.copy(), cv2.COLOR_RGB2GRAY)
-    
-
-    ref, sample = excessive_4(image_reference_gray, image_sample_gray)
-    
-
-    # SUBTRACTING
-    image_subtracted_prc = ref - sample
-    
-    # return remove_Small_Object(image_subtracted_prc.copy(), ratio=ratio, buffer_percentage=buffer_percentage, is_filter=is_filter, filter_lower_ratio=filter_lower_ratio)
-
-    # MASKING
-    image_sample_masked_prc = cv2.bitwise_or(image_sample_gray, image_sample_gray, mask=image_subtracted_prc)
-    
-    image_sample_masked_gray_removed_small_objects, \
-    contours, \
-    all_contours_area, \
-    will_be_removed_buffer, \
-    not_removed_buffer = remove_Small_Object(
-        image_subtracted_prc.copy(), 
-        ratio=0,
-        buffer_percentage=40, 
-        is_filter=True, 
-        is_contour_number_for_area=True,
-        filter_lower_ratio=40, 
-        filter_upper_ratio=50
-    )
-    
-    #print("will_be_removed_buffer", will_be_removed_buffer)
-    #print("not_removed_buffer", not_removed_buffer)
-    #print("contours", contours)
-
-    #from image_manipulation import erosion
-    #kernel = [[0,0,0],
-    #          [0,1,0],
-    #          [1,1,0]]
-    #erode = erosion(image_sample_masked_prc, kernel)
-    #erode = erosion(erode, kernel)
-
-    """th = threshold(image_sample_masked_prc.copy(), configs=[1,255])
-    th_inv = cv2.bitwise_not(th)
-    #masked_img = cv2.bitwise_and(th, th, mask=horizontal_inv)
-    #masked_img_inv = cv2.bitwise_not(masked_img)
-    kernel = np.array([[1,1,1], 
-                       [1,1,1], 
-                       [1,1,1]])
-    erode = cv2.filter2D(th_inv, -1, kernel, cv2.BORDER_DEFAULT)
-    erode = cv2.bitwise_not(erode)"""
-    #image_sample_masked_gray_removed_small_objects, counters, will_be_removed_buffer, not_removed_buffer = remove_Small_Object(image_sample_masked_prc.copy(), ratio=1, buffer_percentage=95, is_filter=False, filter_lower_ratio=10)
-
-
-    draw_diff = True
-    draw_diff_circle = True
-    fill_color = [0,0,255]
-    if draw_diff:
-        image_test_draw = image_test.copy()
-        image_test_draw[image_sample_masked_gray_removed_small_objects != 0] = fill_color
-
-        #image_test_draw[erode != 0] = fill_color
+    if flag_symbol_type == 'line':
+        rpw_outside_filtered, _ = remove_Pixel_With_Distance_Transform(rpw_outside.copy(), contours_outside, thin_threshold=rpw_ratio_px_for_outside)
     else:
-        image_test_draw = None
-
-    """
-    for _, cnt in enumerate(contours):
-        if cv2.contourArea(cnt) in not_removed_buffer:
-            cv2.drawContours(image_test, [cnt], 0, [255, 0, 0], -1)
-    """
+        if len_contours_roberts_ref == len_contours_roberts_sample:
+            rpw_outside_filtered, _ = remove_Pixel_With_Distance_Transform(rpw_outside.copy(), contours_outside, thin_threshold=rpw_ratio_px_for_outside)
+        else:
+            rpw_outside_filtered = rpw_outside.copy()
+            # rpw_outside_filtered, _ = remove_Pixel_With_Distance_Transform(rpw_outside.copy(), contours_outside, thin_threshold=rpw_ratio_px_for_outside)
     
-    """print("not_removed_buffer:", not_removed_buffer)
-    if draw_diff_circle:
-        for contour in contours:
-            center_point = contour_Centroids([contour])[0]
-            
-            fill_color = (10, 10, 255)
-            radius = 35
-            thickness = 3
-
-            
-            draw_Circle(
-                image_test,
-                center_point,
-                radius=radius,
-                color=fill_color,
-                thickness=thickness
-            )
-            
-            
-            if contour_Areas([contour])[0] != 0.0:
-                if contour_Areas([contour])[0] in not_removed_buffer:
-                    
-                    #cv2.circle(
-                    draw_Circle(
-                        image_test,
-                        tuple(center_point),
-                        radius=radius,
-                        color=fill_color,
-                        thickness=thickness
-                    )"""
+    rpw_inside, dict_rpw_contours = remove_Pixel_Width(diff_inside.copy(), contours_inside, pixel_width=rpw_ratio_px, method=rpw_method, counter=counter, pano_sector_index=pano_sector, symbol_hull_list=sample_hulls, title='inside')
+    contours_inside, _ = cv2.findContours(rpw_inside, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    rpw_inside_filtered, list_max_thickness = remove_Pixel_With_Distance_Transform(rpw_inside.copy(), contours_inside, thin_threshold=rpw_ratio_px)
+    # _, _, _, _, not_removed_buffer_for_inside = remove_Small_Object(
+    #     rpw_inside_filtered.copy(),
+    #     ratio=1
+    # )
     
-    show_pack = [image_reference, image_test, image_sample_masked_prc, image_test_draw]
-    show_image(show_pack, open_order=2, window=True)
-    return
-    ###################
-    ###################
-    ###################
-
-
-    image_reference = open_image(arguments["reference"], option = "cv2-rgb", is_numpy=True)[1000:-1000, 1300:-1400]
-    image_test = open_image(arguments["input"], option = "cv2-rgb", is_numpy=True)[1000:-1000, 1300:-1400]
-    image_reference = open_image(arguments["reference"], option = "cv2-rgb", is_numpy=True)
-    image_test = open_image(arguments["input"], option = "cv2-rgb", is_numpy=True)
-    # print("image_reference", len(image_reference))
-    # print("image_test", len(image_test))
-
-    #image_reference = image_reference[1000:-1000, 1300:-1400]
-    #image_test = image_test[1000:-1000, 1300:-1400]
-    #print("image_reference", len(image_reference))
-    #print("image_test", len(image_test))
-
-    # Masking
-    stdo(1, "Program Started.")
-    image_reference_gray = cv2.cvtColor(image_reference.copy(), cv2.COLOR_RGB2GRAY)
-    image_test_gray = cv2.cvtColor(image_test.copy(), cv2.COLOR_RGB2GRAY)
-    # image_subtracted_gray = cv2.cvtColor(image_subtracted, cv2.COLOR_RGB2GRAY)
-
-    # PREPROCESS
-    stdo(1, "Program Started.")
-    down_table = [0, 130, 130, 130, 130]
-    up_table = [150, 150, 150, 150, 255]
-    smpl_sharpened_LUT = look_Up_Table(image_test, down_table=down_table, up_table=up_table)
-
-    src_sobel_gradient = sobel_gradient(image_test, 1)
-
-    """
-    ### ### ### ### ### ### ###
-    ###  Fourier Transform  ###
-    ### ### ### ### ### ### ###
-    import cv2 as cv
-    import numpy as np
-
-    f = np.fft.fft2(image_test_gray)
-    fshift = np.fft.fftshift(f)
-    magnitude_spectrum = 20*np.log(np.abs(fshift))
-
-    rows, cols = image_test_gray.shape
-    crow,ccol = rows//2 , cols//2
-    fshift[crow-30:crow+31, ccol-30:ccol+31] = 0
-    f_ishift = np.fft.ifftshift(fshift)
-    img_back = np.fft.ifft2(f_ishift)
-    img_back = np.real(img_back)
-
-    show_image(
-        (image_test_gray, img_back, magnitude_spectrum),
-        title=["Input Image", "HPF - JET", "Result in MAG"],
-        option="plot",
-        cmap="gray",
-        window=True,
-        open_order=1,
+    combine_both = cv2.add(rpw_outside_filtered, rpw_inside_filtered)
+    
+    # rso_ratio = normalize_Comma_to_Dot_Float(float(rso_ratio))
+    # rso_ratio_px = rso_ratio * 20.244 # (83px -> 4,10mm | 1px -> 0.0494mm | 1mm -> 20.244px) mm to px # Edit 21.07.2025
+    # combine_both_rso, contours, all_contour_area, will_be_removed_buffer, not_removed_buffer = remove_Small_Object(
+    #     combine_both.copy(),
+    #     ratio=int(rso_ratio_px*rso_ratio_px)
+    # )
+    combine_both_rso, contours, all_contour_area, will_be_removed_buffer, not_removed_buffer = remove_Small_Object(
+        combine_both.copy(),
+        ratio=1
     )
     
-    dft = cv.dft(np.float32(image_test_gray),flags = cv.DFT_COMPLEX_OUTPUT)
-    print(dft.shape)
-    dft[:, -5:5] = 0
-    dft_shift = np.fft.fftshift(dft)
-    magnitude_spectrum = 20 * np.log( cv.magnitude( dft_shift[:,:,0], dft_shift[:,:,1]) )
-    #magnitude_spectrum[:, -5:5] = 0
-
-    show_image(
-        (image_test_gray, magnitude_spectrum),
-        title=["Input Image", "Magnitude Spectrum"],
-        option="plot",
-        cmap="gray",
-        window=True,
-        open_order=1,
-    ); exit();
-    """
-
-    """
-    show_image(
-        (image_test, smpl_sharpened_LUT, src_sobel_gradient),
-        #title=["src_sharpened", "smpl_sharpened", "src_sharpened_gray_cl", "smpl_sharpened_gray_cl"],
-        option="plot",
-        cmap="gray",
-        window=True,
-        open_order=2,
-    ); exit();
-    """
-    ### ### ### ### ### ### ###
-    ### ### ### ### ### ### ###
-    ### ### ### ### ### ### ###
-
-    #excessive_1(image_test)
-    #image_reference_gray, image_test_gray = excessive_2(image_reference_gray, image_test_gray, sharp_scale=0, is_smooth=False, smooth_scale=0, is_sharp=False)
-
-    # dst = cv2.equalizeHist(image_test_gray.copy()); show_image([image_test_gray.copy(), dst], open_order=1, window=True)
-    # import pdb; pdb.set_trace();
-    """
-    image_reference_gray, image_test_gray = excessive_3_sobel_gradient(
-        image_reference_gray, 
-        image_test_gray, 
-        sharp_scale=0, 
-        is_smooth=False, 
-        smooth_scale=0, 
-        is_sharp=False
-    )
-    """
-
-
-    # image_test_gray = resize_to_same(image_reference_gray, image_test_gray)
-
-    sobel_scale = 1
-    image_reference_preprocessed,_,_ = preprocessing(image_reference_gray.copy(), sharp_scale=sharp_scale, sobel_scale=sobel_scale, window=window)
-    image_test_preprocessed,_,_ = preprocessing(image_test_gray.copy(), sharp_scale=sharp_scale, sobel_scale=sobel_scale, window=window, threshold_config=[-1, 3])
-
-    # SUBTRACTION
-    image_subtracted_prc = image_test_preprocessed - image_reference_preprocessed
-
-    # extractor_difference(image_reference, image_test, sobel_scale=1, ratio=0, buffer_percentage=95, is_filter=True, filter_lower_ratio=10, threshold_config=[-1, 3])
-
-    #########
-    #  END  #
-    #########
-
-    # To get the time passed, end the time logger and print the passed time
-    time_log(id="background_substraction")
-    stdo(
-        1,
-        "Time passed: {:.3f} ms".format(time_list["background_substraction"]["passed"]),
-    )
-
-    # Alpha Blending
-    # image_test_alphablended = cv2.addWeighted(image_test, 0.5, image_subtracted, 0.5, 0)
-
-    image_test_masked_prc = cv2.bitwise_or(image_test_gray, image_test_gray, mask=image_subtracted_prc)
-
-    show_image(
-        (
-            image_test_gray,                image_test_gray,
-            image_test_masked_prc
-        ),
-        title=[
-            "image_test_gray",                "image_test_gray",
-            "image_test_masked_prc"
-            ],
-        option="plot",
-        cmap="gray",
-        window=arguments["window"],
-        open_order=2,
-    )
+    if (org_width / org_height > 3) or (org_height / org_width > 3): # Long-Thin Lines #
+        contours = [cnt - [pad_left, pad_top] for cnt in contours]
+        not_removed_buffer = [cnt - [pad_left, pad_top] for cnt in not_removed_buffer]
+        combine_both = combine_both[pad_top:-pad_bottom, pad_left:-pad_right]
+        combine_both_rso = combine_both_rso[pad_top:-pad_bottom, pad_left:-pad_right]
+        
+    image_sample_masked_gray_removed_small_objects = combine_both
+    centroid_contour = contour_Centroids(not_removed_buffer)
     
+    stop_dt = time.time() - start_dt
+    #### #### #### #### #### ####
+    #### #### #### #### #### ####
+    #### #### #### #### #### ####
+    
+    
+    #### #### #### #### #### ####
+    #### #### Redecision ### ####
+    #### #### #### #### #### ####
+    start_redecision = time.time()
 
-    kernel = [
-                [0, 1, 0], 
-                [1, 1, 1], 
-                [0, 1, 0]
+    rpw_elements = dict_sample_symbol_contours
+    list_thickness = []
+    
+    flag_decision = 'OK'
+
+    if centroid_contour:
+        flag_decision = 'NOK'
+        
+        if not_removed_buffer:
+            
+            list_thickness = get_Thickness_With_Distance_Transform(combine_both_rso, not_removed_buffer)
+            
+            ########### FOR-REDECISION-COLLECTOR ##########
+            temp_buffer_data_collector = [
+                pano_sector + "_" + str(counter),
+                "",
+                "",
+                "",
+                "",
+                object_color,
+                image_sample_pad_warped,
+                diff,
+                roberts_sample,
+                roberts_ref,
+                centroid_contour,
+                list_thickness,
             ]
-    kernel = [-1, -3, -1]
-
+            image_processing_data_collector.buffer_add(temp_buffer_data_collector)
+            ###############################################
     
-    image_test_masked_rso = image_test.copy()
-
-    # 10 filter_lower_ratio for others
-    # 150 filter_lower_ratio for inlay
-    image_test_masked_gray_removed_small_objects_1, contours, will_be_removed_buffer, not_removed_buffer = remove_Small_Object(
-        image_subtracted_prc.copy(), ratio=0, buffer_percentage=95, is_filter=True, filter_lower_ratio=10
-    )
-    image_test_masked_gray_removed_small_objects, contours, will_be_removed_buffer, not_removed_buffer = remove_Small_Object(
-        image_test_masked_gray_removed_small_objects_1.copy(), ratio=0, buffer_percentage=95, is_filter=True, filter_lower_ratio=10
-    )
+    temp_buffer_redess_data_collector = [
+        object_color,
+        image_sample_preprocessed_largest_contour,
+        roberts_sample,
+        flag_decision,
+        counter,
+        symbol_start_coords,
+    ]
+    redecession_learning_data_collector.buffer_add(temp_buffer_redess_data_collector)
     
+    stop_redecision = time.time() - start_redecision
+    #### #### #### #### #### ####
+    #### #### #### #### #### ####
+    #### #### #### #### #### ####
     
+    stop_seq = time.time() - start_seq
     
-    ### #### ###
-    ### DRAW ###
-    ### #### ###
-
-    # import pdb; pdb.set_trace()
-    image_test_masked_rso[image_test_masked_gray_removed_small_objects != 0] = [255, 0, 0]
-
-    center_points = contour_Centroids(contours)
-    for center_point in center_points:
-        draw_Circle(
-            image_test_masked_rso,
-            tuple(center_point),
-            radius=1,
-            color=(255, 0, 0),
-            thickness=-1
+    if activate_debug_images:
+        
+        # stdo(1, "[{}][{}][{}] T:{:.3f} | pp:{:.3f} | lc:{:.3f} | hull:{:.3f} | wp:{:.3f} | ed:{:.3f} | sub:{:.3f} | elim:{:.3f} | dt:{:.3f} | r:{:.3f} - Matched Area:{} | Inside Thickness:{}".format(
+        #         "ED",
+        #         counter,
+        #         flag_symbol_type,
+        #         stop_seq,
+        #         stop_preprocess,
+        #         stop_largest_contour,
+        #         stop_hull,
+        #         stop_warp_perspective,
+        #         stop_edge_detection,
+        #         stop_subtract,
+        #         stop_elim,
+        #         stop_dt,
+        #         stop_redecision,
+        #         all_contour_area,
+        #         list_max_thickness
+        #     )
+        # )
+        stdo(1, "[{}][{}][{}] T:{:.3f} | Matched Area:{} | Inside Thickness:{}".format(
+                "ED",
+                counter,
+                flag_symbol_type,
+                stop_seq,
+                all_contour_area,
+                list_max_thickness
+            )
         )
-
-    # import pdb; pdb.set_trace()
-    # image_test_masked_gray_removed_small_objects = resize_to_same(image_test_masked_rso, image_test_masked_gray_removed_small_objects)
-    image_test_masked_rso[image_test_masked_gray_removed_small_objects != 0] = [180, 10, 0]
-    ### ### ###
-
-    # image_test_masked_gray_erosion = erosion(image_subtracted_prc.copy(), kernel)
-    # image_test_masked_erosion = image_test.copy()
-    # image_test_masked_erosion[image_test_masked_gray_erosion != 0] = [180, 10, 0]
-
-    #import pdb; pdb.set_trace();
-    """stdo(
-        1,
-        "contours: {} | will_be_removed_buffer: {} | not_removed_buffer: {}".format(
-            len(contours), len(will_be_removed_buffer), len(not_removed_buffer)
-        ),
-    )"""
+        
+        list_temp_save_image = [
+            image_reference_pad, 
+            image_sample_pad,
+            image_reference_preprocessed_largest_contour, 
+            image_sample_preprocessed_largest_contour, 
+            img_bbox_ref, 
+            img_bbox_sample,
+            diff,
+            mask, 
+            draw_org_diff, 
+            diff_outside,
+            ropw_color_outside,
+            rpw_outside,
+            rpw_outside_filtered,
+            diff_inside,
+            ropw_color_inside, 
+            rpw_inside,
+            rpw_inside_filtered,
+            combine_both_rso
+        ]
+        filename = [
+            str(counter)+"_1_ref_pad", 
+            str(counter)+"_2_sample_pad",        
+            str(counter)+"_3_ref_pre", 
+            str(counter)+"_4_sample_pre", 
+            str(counter)+"_5_ref_bbox", 
+            str(counter)+"_6_sample_bbox", 
+            str(counter)+"_7_diff", 
+            str(counter)+"_8_mask", 
+            str(counter)+"_9_draw_org_diff",
+            str(counter)+"_10_diff_outside",
+            str(counter)+"_11_ropw_color_outside",
+            str(counter)+"_12_rpw_outside",
+            str(counter)+"_13_rpw_outside_filtered",
+            str(counter)+"_14_diff_inside",
+            str(counter)+"_15_ropw_color_inside",
+            str(counter)+"_16_rpw_inside",
+            str(counter)+"_17_rpw_inside_filtered",
+            str(counter)+"_18_combine_both_rso",
+        ]
+        save_image(list_temp_save_image, path="temp_files/extractor_difference/method-"+str(method), filename=filename, format="png")
+            
     
-    # from image_tools import open_image, show_image, save_image; show_image((debug_src, src, src - debug_src), title=["ttt", "ttt2", "ttt3"], option="plot", cmap="gray", window=True, open_order=1)
-    show_image(
-        (
-            image_reference,                image_test,
-            image_reference_preprocessed,   image_test_preprocessed,
-            image_subtracted_prc,           image_test_masked_prc,
-            image_test_masked_gray_removed_small_objects_1, 
-            image_test_masked_gray_removed_small_objects, image_test_masked_rso
-        ),
-        title=[
-            "image_reference",              "image_test", 
-            "image_reference_preprocessed", "image_test_preprocessed", 
-            "image_subtracted_prc",         "image_test_masked_prc",
-            "image_test_masked_gray_removed_small_objects_1",
-            "image_test_masked_gray_erosion","image_test_masked_gray_removed_small_objects",
-            "image_test_masked_erosion",    "image_test_masked_rso"],
-        option="plot",
-        cmap="gray",
-        window=arguments["window"],
-        open_order=2,
-    )
-    
-    """show_image(
-        (
-            image_reference,                image_test,
-            image_reference_preprocessed,   image_test_preprocessed,
-            image_subtracted_prc,           image_test_masked_prc,
-            image_test_masked_gray_erosion, image_test_masked_gray_removed_small_objects,
-            image_test_masked_erosion,      image_test_masked_rso
-        ),
-        title=[
-            "image_reference",              "image_test", 
-            "image_reference_preprocessed", "image_test_preprocessed", 
-            "image_subtracted_prc",         "image_test_masked_prc",
-            "image_test_masked_gray_erosion","image_test_masked_gray_removed_small_objects",
-            "image_test_masked_erosion",    "image_test_masked_rso"],
-        option="plot",
-        cmap="gray",
-        window=arguments["window"],
-        open_order=2,
-    )"""
-
-    save_image(image_test, arguments["output"])
-
-    
-
-
-# Program Body Trigger
-if __name__ == "__main__":
-    main()
+    return image_sample_masked_gray_removed_small_objects, image_sample, contours, not_removed_buffer, centroid_contour, diff, rpw_elements, dict_sample_symbol_contours, list_thickness, flag_symbol_type

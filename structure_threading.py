@@ -66,7 +66,7 @@ class Thread_Object(threading.Thread):
             IMPORTANT: Threads can only be started once. So run once at a time with specified delay and/or quit statement and/or manuel quit 
 
         Example;
-            connector_thread_1 = Thread_Object("The 1", delay=0.1, logger_level=4, set_Deamon=False, run_number=1)
+            connector_thread_1 = Thread_Object("The 1", delay=0.1, logger_level=4, set_Daemon=False, run_number=1)
 
             # Run stdo with [1, "Message: 1"] parameter(s)
             connector_thread_1.init(stdo, [1, "Message: 1"])
@@ -122,10 +122,10 @@ class Thread_Object(threading.Thread):
         return super(Thread_Object, cls).__new__(cls)
     """
 
-    def __init__(self, name="Thread", delay=0.001, set_Deamon=True, run_number=None, quit_trigger=None, logger_level=logging.INFO, max_limit=10):
+    def __init__(self, name="Thread", delay=0.001, set_Daemon=True, run_number=None, quit_trigger=None, logger_level=logging.INFO, max_limit=10):
         threading.Thread.__init__(self)
         Thread_Object.__thread_counter += 1
-        self.setDaemon(set_Deamon)  # don't hang on exit
+        self.setDaemon(set_Daemon)  # don't hang on exit
 
         self.statement_quit = False
 
@@ -143,6 +143,10 @@ class Thread_Object(threading.Thread):
         self.delay = delay
         self.quit_trigger = quit_trigger
         self.run_number = run_number
+        
+        # self.running = threading.Event() # Thread çalışsın mı çalışmasın mı? # Add at 09.07.2025 
+        # self.paused = threading.Event() # Duraklatma kontrolü # Add at 09.07.2025 
+        # self.paused.set() # İlk başta duraklatılmış değil (yani çalışabilir) # Add at 09.07.2025 
 
         self.logger = logging.getLogger('[{}]'.format(self.name))
         # self.logger = logging.getLogger('Thread {} ({})'.format(self.thread_ID, self.name))
@@ -170,12 +174,19 @@ class Thread_Object(threading.Thread):
         self.logger.debug('Running...')
 
         while True:
+            
+            # self.running.wait() # Durdurulduysa burada bekler # Add at 09.07.2025 
+            # self.paused.wait()# Duraklatıldıysa burada bekler # Add at 09.07.2025 
+            
+            
             # ### #### #### ### #
             # Quit Case Control #
             # ### #### #### ### #
             if self.run_number is not None:
                 if self.run_number <= 0:
-                    self.logger.debug('Runned task with given number of times.')
+                    self.logger.debug(
+                        'Has been run task with given number of times.'
+                    )
                     break
                 self.run_number -= 1
 
@@ -208,12 +219,12 @@ class Thread_Object(threading.Thread):
                             self.params 
                         )
                     )
-                #self.logger.debug('Task is complated.')
+                #self.logger.debug('Task is completed.')
             # ### #### #### ### #
             sleep(self.delay)
 
         self.quit()
-        self.logger.debug('Run is complated.')
+        self.logger.debug('Run is completed.')
 
     def init(self, params=None, connection=None, task=None):
         self.params = params
@@ -234,7 +245,7 @@ class Thread_Object(threading.Thread):
                 self.connection(self.params)
         else:
             self.logger.debug('Connector connection is None, ID: {}'.format(self.thread_ID))
-        self.logger.debug('Connector task is complated, ID: {}'.format(self.thread_ID))
+        self.logger.debug('Connector task is completed, ID: {}'.format(self.thread_ID))
 
     def task(self, params=None):
         import random
@@ -291,9 +302,24 @@ class Thread_Object(threading.Thread):
             self.params = None
         """
         # self.clear_Buffer()
-        self.logger.debug('Quiting...')
+        self.logger.debug('Quitting...')
 
+    """
+    def start_thread(self): # Add at 09.07.2025 
+        if not self.is_alive():
+            self.running.set()
+            self.paused.set()
+            super().start()
+        else:
+            self.resume_thread()
+    
+    def pause_thread(self): # Add at 09.07.2025 
+        self.paused.clear()
 
+    def resume_thread(self): # Add at 09.07.2025 
+        self.running.set()
+        self.paused.set()
+    """
 def custom_connection(param="Nothing"):
     if callable(param):
         param()
@@ -312,7 +338,7 @@ def main():
         "The 1", 
         delay=0.1, 
         logger_level=4, 
-        set_Deamon=False, 
+        set_Daemon=False, 
         run_number=1
     )
 

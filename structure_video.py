@@ -307,7 +307,7 @@ class Video_Object():
             name="Camera_Object.stream_Start_Thread",
             delay=0.0001,
             logger_level=self.logger.getEffectiveLevel(),
-            set_Deamon=True,
+            set_Daemon=True,
             run_number=1,
             quit_trigger=trigger_quit
         )

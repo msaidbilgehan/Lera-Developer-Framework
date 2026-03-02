@@ -148,5 +148,10 @@ def get_time(level=1):
     elif level == 4:  # To get date | clock (For output logs)
         return "{0} | {1}".format(get_time(level=2), get_time(level=1))
 
+    elif level == 5:  # To get only clock
+        return "{0}".format(
+            time.localtime(time.time())[3]
+        )
+
     else:
         return ""

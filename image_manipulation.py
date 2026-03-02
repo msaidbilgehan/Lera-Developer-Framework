@@ -1,4 +1,3 @@
-#cython: language_level=3, boundscheck=False
 """
 Written for Python 3.7.x
 Tested with Python 3.7.7 on Windows 10
@@ -36,18 +35,29 @@ Snippets:
 
 """
 
+import time
 
+import hashlib
+import inspect
 from tools import stdo
 import cv2
 # import circleTools
 import numpy as np
+import itertools
+
+
+from skimage import exposure
+from skimage.feature import corner_harris, corner_subpix, corner_peaks
+from skimage.transform import hough_line, hough_line_peaks
+from skimage.measure import ransac, LineModelND
+
+
 from inspect import currentframe, getframeinfo
 from image_tools import is_numpy_image
 
 
-import time
-
-from image_tools import show_image
+from image_tools import show_image, save_image
+from math_tools import coordinate_Scaling, filter_Close_Points, filter_Close_Points_2, filter_Closest_Bottom_Points, get_Angles_Of_Horizontal_Lines, determine_Line_Position, compute_Contour_Thickness, compute_Contour_Thickness_2, line_Intersection
 
 # from fourier_transform import fft_blur, fft2
 
@@ -147,7 +157,9 @@ def contour_Extreme_Points(list_contour, get_centroid=False, is_width_height=Fal
     topmost = tuple(list_contour[list_contour[:,:,1].argmin()][0])
     bottommost = tuple(list_contour[list_contour[:,:,1].argmax()][0])
     centroid = (-1, -1)
-        
+    
+    # stdo(1, "contour_Extreme_Points-rightmost: {} |||| {}".format(list_contour, rightmost))
+
     if get_centroid:
         centroid = (int(round((leftmost[0] + rightmost[0] + topmost[0] + bottommost[0]) / 4)), int(round((leftmost[1] + rightmost[1] + topmost[1] + bottommost[1]) / 4)))
 
@@ -156,8 +168,8 @@ def contour_Extreme_Points(list_contour, get_centroid=False, is_width_height=Fal
         start_y = topmost[1]
         w = abs(leftmost[0] - rightmost[0])
         h = abs(topmost[1] - bottommost[1])
-        
         return_data = [start_x, start_y, w, h, centroid]
+        
     else:
         return_data = [leftmost, topmost, rightmost, bottommost, centroid]
 
@@ -192,19 +204,30 @@ def contour_Areas(list_contour, is_chosen_max=True, is_contour_number_for_area=F
     return contour_areas
 
 
-def contour_Centroids(list_contour, get_bbox_centroid=False):
+def contour_Centroids(list_contour, get_bbox_centroid=False, is_single=False):
     contour_centroids = list()
     if get_bbox_centroid:
-        for contour in list_contour:
-            startx = contour[0]
-            starty = contour[1]
-            endx = startx + contour[2]
-            endy = starty + contour[3]
+        if is_single:
+            startx = list_contour[0]
+            starty = list_contour[1]
+            endx = startx + list_contour[2]
+            endy = starty + list_contour[3]
 
             centroids_x = int((startx + endx) / 2)
             centroids_y = int((starty + endy) / 2)
 
             contour_centroids.append([centroids_x, centroids_y])
+        else:
+            for contour in list_contour:
+                startx = contour[0]
+                starty = contour[1]
+                endx = startx + contour[2]
+                endy = starty + contour[3]
+
+                centroids_x = int((startx + endx) / 2)
+                centroids_y = int((starty + endy) / 2)
+
+                contour_centroids.append([centroids_x, centroids_y])
     else:
         for contour in list_contour:
             moment = cv2.moments(contour)
@@ -280,7 +303,7 @@ def adjust_brightness(img, brightness_factor):
         return cv2.LUT(img, table) 
 
 
-def adjust_contrast(img, contrast_factor):
+def adjust_Contrast(img, contrast_factor=1.5, method='Adjust', alpha=1, beta=0):
     # https://www.programcreek.com/python/example/89460/cv2.LUT
     """Adjust contrast of an mage.
     Args:
@@ -293,21 +316,38 @@ def adjust_contrast(img, contrast_factor):
     """
     # much faster to use the LUT construction than anything else I've tried
     # it's because you have to change dtypes multiple times
-    if not is_numpy_image(img):
-        raise TypeError('img should be numpy Image. Got {}'.format(type(img)))
-    table = np.array([ (i-74)*contrast_factor+74 for i in range (0,256)]).clip(0,255).astype('uint8')
-    # enhancer = ImageEnhance.Contrast(img)
-    # img = enhancer.enhance(contrast_factor)
-    if len(img.shape) == 3:
-        if img.shape[2]==1:
-            return cv2.LUT(img, table)[:,:,np.newaxis]
+    
+    if method == 'Adjust':
+        if not is_numpy_image(img):
+            raise TypeError('img should be numpy Image. Got {}'.format(type(img)))
+        table = np.array([ (i-74)*contrast_factor+74 for i in range (0,256)]).clip(0,255).astype('uint8')
+        # enhancer = ImageEnhance.Contrast(img)
+        # img = enhancer.enhance(contrast_factor)
+        if len(img.shape) == 3:
+            if img.shape[2]==1:
+                return cv2.LUT(img, table)[:,:,np.newaxis]
+            else:
+                return cv2.LUT(img, table)
         else:
-            return cv2.LUT(img, table)
-    else:
-        return cv2.LUT(img,table) 
+            return cv2.LUT(img,table)
+        
+    elif method == 'Stretching':
+        #new_image = np.zeros(img.shape, img.dtype)
+        
+        """
+        for y in range(img.shape[0]):
+            for x in range(img.shape[1]):
+                for c in range(img.shape[2]):
+                    new_image[y,x,c] = np.clip(alpha*img[y,x,c] + beta, 0, 255)
+        """
+        
+        img = cv2.convertScaleAbs(img, alpha=alpha, beta=beta)
+        
+        return img
+        
 
 
-def gamma_correction(img, gamma = 2):
+def gamma_Correction(img, gamma = 2):
     lookUpTable = np.empty((1,256), np.uint8)
     for j in range(256):
         lookUpTable[0,j] = np.clip(pow(j / 255.0, float(gamma)) * 255.0, 0, 255)
@@ -348,7 +388,20 @@ def look_Up_Table(src, down_table=[], up_table=[], is_gray_scale = True):
     else:
         stdo(3, "Not implemented. Check the comments in function... (REF: https://docs.opencv.org/2.4/modules/core/doc/operations_on_arrays.html#lut)")
 
-def remove_Small_Object(src, is_chosen_max_area=True, is_contour_number_for_area=True, ratio=0, buffer_percentage=30, is_filter=True, filter_lower_ratio=7, filter_upper_ratio=253, aspect='lower', elim_coord=[]):
+def remove_Small_Object(
+        src, 
+        is_chosen_max_area=True, 
+        is_contour_number_for_area=True, 
+        ratio=0, 
+        buffer_percentage=30, 
+        is_filter=True, 
+        filter_lower_ratio=7, 
+        filter_upper_ratio=253, 
+        aspect='lower', 
+        elim_coord=[],
+        counter=0
+    ):
+    
     if buffer_percentage > 100:
         buffer_percentage = 100
     if buffer_percentage < 0:
@@ -436,9 +489,10 @@ def remove_Small_Object(src, is_chosen_max_area=True, is_contour_number_for_area
         else:
             removed_buffer = list()
             not_removed_buffer = list()
+            
             for index, cnt in enumerate(contours):
                 if aspect == 'lower':
-                    #print(index, "-", cv2.contourArea(cnt))
+                    #print(counter, ": ", cv2.contourArea(cnt), "|", ratio)
                     if cv2.contourArea(cnt) < ratio:
                         removed_buffer.append(cnt)
                         cv2.drawContours(src, [cnt], 0, [0, 0, 0], -1)
@@ -451,14 +505,14 @@ def remove_Small_Object(src, is_chosen_max_area=True, is_contour_number_for_area
                     else:
                         not_removed_buffer.append(cnt)
         stop_draw = time.time() - start_draw
-
         
-    """stdo(1, "RSO TIMES -- BUFFER: {:.3f} | DRAW: {:.3f}".format
-                (
-                    stop_buffer,
-                    stop_draw
-                )
-            )"""
+    """
+    stdo(1, "RSO TIMES -- BUFFER: {:.3f} | DRAW: {:.3f}".format(
+            stop_buffer,
+            stop_draw
+        )
+    )
+    """
     
     return src, contours, list_area, removed_buffer, not_removed_buffer
 
@@ -549,32 +603,45 @@ def remove_Small_Object_old(src, is_chosen_max_area=True, is_contour_number_for_
     
     return src, contours, buffer, removed_buffer, not_removed_buffer
     
-def draw_Text(image, text=[], center_point=(0,0), fontscale=1, color=(0,255,0), thickness=2):
+def draw_Text(image, text=[], center_point=(0,0), fontscale=1, color=(0,255,0), thickness=2, plain=False):
     
-    count_index = 0
-    for _, text_ in enumerate(text):
-        count_index += 1
+    if plain:
+        text_format = "{}".format(text)
         
-    if count_index == 1:
-        text_format = "{}".format(*text)
     else:
-        text_format = "{}-{:.2f}".format(*text)
+        count_index = 0
+        for _, text_ in enumerate(text):
+            count_index += 1
         
-    cv2.putText(image,
-                text_format, 
-                (center_point[0], center_point[1]-20), 
-                cv2.FONT_HERSHEY_SIMPLEX, fontscale, color, thickness, cv2.LINE_AA
-            )
+        if count_index == 1:
+            text_format = "{}".format(*text)
+        else:
+            text_format = "{}:{}".format(*text)
+        
+    cv2.putText(
+        image,
+        text_format, 
+        (center_point[0], center_point[1]-20), 
+        cv2.FONT_HERSHEY_SIMPLEX, fontscale, color, thickness, cv2.LINE_AA
+    )
     return image
 
 def draw_Line(image, start_point, end_point, color=(255, 255, 255), thickness=-1):
-    cv2.line(image, start_point, end_point, color, thickness)
+    return cv2.line(image, start_point, end_point, color, thickness)
 
 def draw_Circle(image, center_point, radius=1, color=(255, 255, 255), thickness=-1):
-    cv2.circle(image, center_point, radius, color, thickness)
+    
+    # stdo(1, "draw_Circle: center_point:{}".format(center_point))
+    
+    return cv2.circle(image, center_point, radius, color, thickness)
 
-def draw_Rectangle(image, start_point, end_point, color=(255, 255, 255), thickness=-1):
-    cv2.rectangle(image, start_point, end_point, color, thickness)
+def draw_Rectangle(image, start_point, end_point, color=(255, 255, 255), thickness=-1): 
+    image = cv2.rectangle(image, (int(start_point[0]), int(start_point[1]), int(end_point[0]), int(end_point[1])), color, thickness)
+    return image
+
+def draw_Arrow(image, start_point, end_point, color=(255, 255, 255), thickness=-1):
+    image = cv2.arrowedLine(image, start_point, end_point, color, thickness) 
+    return image
 
 def transparent_Draw(src_frame, alpha=0.5, beta=1, radius=5, pts=[], fill_color=(0,0,255)):
     frame_display = src_frame.copy()
@@ -587,7 +654,7 @@ def transparent_Draw(src_frame, alpha=0.5, beta=1, radius=5, pts=[], fill_color=
             #if not center_point.all():
             #    continue
             
-            draw_circle(
+            draw_Circle(
                 roi,
                 tuple(center_point),
                 radius=radius,
@@ -944,7 +1011,7 @@ def crop(img, configs):
     except Exception as error:
         stdo(
             3,
-            "An error occurred while doing 'crop' image manupilation -> "
+            "An error occurred while doing 'crop' image manipulation -> "
             + error.__str__(),
             getframeinfo(currentframe()),
         )
@@ -983,7 +1050,7 @@ def resize(img, configs):
     except Exception as error:
         stdo(
             3,
-            "An error occurred while doing 'resize' image manupilation -> "
+            "An error occurred while doing 'resize' image manipulation -> "
             + error.__str__(),
             getframeinfo(currentframe()),
         )
@@ -1007,7 +1074,7 @@ def expand(img, configs):
     elif configs[0] == 2:
         color = 123  # Grey
     else: 
-        color = configs[0]  # Custom Colour
+        color = configs[0]  # Custom Color
 
     # Lock Aspect Ratio
     if configs[1] == 0:  # NO Lock Aspect Ratio
@@ -1061,18 +1128,16 @@ def expand(img, configs):
     except Exception as error:
         stdo(
             3,
-            "An error occurred while doing 'expand' image manupilation -> "
-            "An error occured while doing 'expand' image manupilation -> "
+            "An error occurred while doing 'expand' image manipulation -> "
+            "An error occurred while doing 'expand' image manipulation -> "
             + error.__str__(),
             getframeinfo(currentframe()),
         )
         return img
     """
 
-def grayscale(img, configs):
-    # TODO: Add CV2 convertion
-    #return rgb2gray(img)  # convert to grey to reduce details
-    return -1
+def grayscale_Conversion(img):
+    return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
 def convert_RGB(img, configs):
     # https://www.programcreek.com/python/example/89231/skimage.color.gray2rgb
@@ -1091,7 +1156,7 @@ def convert_RGB(img, configs):
         h, w = img.shape
         stdo(
             3,
-            "An error occurred while doing 'convert_RGB' image manupilation -> Grayscale image arrived.",
+            "An error occurred while doing 'convert_RGB' image manipulation -> Grayscale image arrived.",
         )
         # return gray2rgb(img)
     """
@@ -1108,7 +1173,7 @@ def convert_RGB(img, configs):
     else:
         stdo(
             3,
-            "An error occured while doing 'convert_RGB' image manupilation -> Invalid image channel size",
+            "An error occurred while doing 'convert_RGB' image manipulation -> Invalid image channel size",
         )
 
 def invert_color(img, configs):
@@ -1122,7 +1187,7 @@ def invert_color(img, configs):
     except Exception as error:
         stdo(
             3,
-            "An error occured while doing 'invert_color' image manupilation -> "
+            "An error occurred while doing 'invert_color' image manipulation -> "
             + error.__str__(),
             getframeinfo(currentframe()),
         )
@@ -1141,14 +1206,14 @@ def bilateral_blur(img, configs):
     except Exception as error:
         stdo(
             3,
-            "An error occured while doing 'bilateral_blur' image manupilation -> "
+            "An error occurred while doing 'bilateral_blur' image manipulation -> "
             + error.__str__(),
             getframeinfo(currentframe()),
         )
         return img
     """
 
-def median_blur(img, configs):
+def median_blur(img, configs=[]):
     #try:
     if configs != "" and configs != [""] and configs != []:
         return cv2.medianBlur(img, int(configs[0]))  # Blur to reduce noise
@@ -1158,7 +1223,7 @@ def median_blur(img, configs):
     except Exception as error:
         stdo(
             3,
-            "An error occured while doing 'median_blur' image manupilation -> "
+            "An error occurred while doing 'median_blur' image manipulation -> "
             + error.__str__(),
             getframeinfo(currentframe()),
         )
@@ -1177,7 +1242,7 @@ def gaussian_blur(img, configs):
     except Exception as error:
         stdo(
             3,
-            "An error occured while doing 'gaussian_blur' image manupilation -> "
+            "An error occurred while doing 'gaussian_blur' image manipulation -> "
             + error.__str__(),
             getframeinfo(currentframe()),
         )
@@ -1190,7 +1255,7 @@ def gaussian_blur(img, configs):
                     recoveryConfigs[i] = configs[i]
             stdo(
                 2,
-                "Trying different 'gaussian_blur' image manupilation parameters: Current{} -> Recovery{}".format(
+                "Trying different 'gaussian_blur' image manipulation parameters: Current{} -> Recovery{}".format(
                     configs, recoveryConfigs
                 ),
             )
@@ -1202,33 +1267,26 @@ def gaussian_blur(img, configs):
         except Exception as error:
             stdo(
                 3,
-                "An error occured while doing 'gaussian_blur' image manupilation recovery action -> "
+                "An error occurred while doing 'gaussian_blur' image manipulation recovery action -> "
                 + error.__str__(),
                 getframeinfo(currentframe()),
             )
             return img
     """
 
-def canny_edge_detection(img, configs):
-    # Canny edge detection.
-    #try:
-    if configs != "" and configs != [""] and configs != []:
-        return cv2.Canny(img, int(configs[0]), int(configs[1]))
+def edge_Detection(image, method='Canny', configs=[100,200]):
+    
+    if method == 'Canny':
+        if configs != "" and configs != [""] and configs != []:
+            return cv2.Canny(image, int(configs[0]), int(configs[1]))
+        else:
+            return cv2.Canny(image, 100, 120)
+        
     else:
-        return cv2.Canny(img, 100, 120)
-    """
-    except Exception as error:
-        stdo(
-            3,
-            "An error occured while doing 'canny_edge_detection' image manupilation -> "
-            + error.__str__(),
-            getframeinfo(currentframe()),
-        )
-        return img
-    """
+        return image
 
-# https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_thresholding/py_thresholding.html
 def threshold(img, configs):
+    # https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_thresholding/py_thresholding.html
 
     """
     Special parameters for threshold, use -1 as firs param, and than use -1, 0, 1, and so on, as second param...
@@ -1266,15 +1324,16 @@ def threshold(img, configs):
     except Exception as error:
         stdo(
             3,
-            "An error occured while doing 'threshold' image manupilation -> "
+            "An error occurred while doing 'threshold' image manipulation -> "
             + error.__str__(),
             getframeinfo(currentframe()),
         )
         return img
     """
 
-# https://docs.opencv.org/3.1.0/d4/d73/tutorial_py_contours_begin.html#gsc.tab=0
 def contours(img, configs):
+    # https://docs.opencv.org/3.1.0/d4/d73/tutorial_py_contours_begin.html#gsc.tab=0
+    
     #try:
     """
     if configs != "" and configs != [""] and configs != []:
@@ -1283,8 +1342,8 @@ def contours(img, configs):
     """
 
     # ret, thresh = cv2.threshold(img, 127, 255, 0)
-    # I tried threshold but canny_edge_detection better for more optimized output
-    cEDImage = canny_edge_detection(img, [])
+    # I tried threshold but edge_Detection better for more optimized output
+    cEDImage = edge_Detection(img, [])
 
     """
     # import pdb; pdb.set_trace()
@@ -1300,14 +1359,14 @@ def contours(img, configs):
     )
 
     # Draw Contours Docs: https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_begin/py_contours_begin.html
-    cv2.drawContours(img, contours, -1, (0, 255, 0), 3)
+    # cv2.drawContours(img, contours, -1, (0, 255, 0), 3)
     return img
 
     """
     except Exception as error:
         stdo(
             3,
-            "An error occured while doing 'contours' image manupilation -> "
+            "An error occurred while doing 'contours' image manipulation -> "
             + error.__str__(),
             getframeinfo(currentframe()),
         )
@@ -1326,7 +1385,7 @@ def label_connected(img, configs):
     except Exception as error:
         stdo(
             3,
-            "An error occured while doing 'label_connected' image manupilation -> "
+            "An error occurred while doing 'label_connected' image manipulation -> "
             + error.__str__(),
             getframeinfo(currentframe()),
         )
@@ -1373,16 +1432,16 @@ def deskew(img, configs=[0, 0]):
     affine_flags = cv2.WARP_INVERSE_MAP | cv2.INTER_LINEAR
 
     m = cv2.moments(img_gray)
-    if abs(m["mu02"]) < 1e-2:  # If there is no need to deskewing, return original image
+    if abs(m["mu02"]) < 1e-2:  # If there is no need to De-skewing, return original image
         return img
 
-    if configs == [0, 0]:  # Auto re-Deskew mode off - One time Deskewing
+    if configs == [0, 0]:  # Auto re-De-skewing mode off - One time De-skewing
         deskewCount = 1
         skew = m["mu11"] / m["mu02"]
         M = np.float32([[1, skew, -0.5 * SZ * skew], [0, 1, 0]])
         img = cv2.warpAffine(img, M, (SZ, SZ), flags=affine_flags)
 
-    elif configs == [1, 0]:  # Auto re-Deskew mode on - Multi Deskewing
+    elif configs == [1, 0]:  # Auto re-De-skewing mode on - Multi De-skewing
         deskewCount = 0
         while abs(m["mu02"]) >= 1e-2:
             deskewCount += 1
@@ -1399,7 +1458,7 @@ def deskew(img, configs=[0, 0]):
 
     elif (
         configs[0] == 1
-    ):  # Custom number of re-Deskew mode on - Multi Deskewing with given number
+    ):  # Custom number of re-re-De-skewing mode on - Multi De-skewing with given number
         deskewCount = configs[1]
         while deskewCount > 0:
             deskewCount -= 1
@@ -1417,13 +1476,13 @@ def deskew(img, configs=[0, 0]):
     else:
         stdo(
             1,
-            """   '- Wrong configurations for deskewing - configs: {}""".format(
+            """   '- Wrong configurations for De-skewing - configs: {}""".format(
                 configs
             ),
         )
         return img
 
-    stdo(1, """   '- {} number of Deskewing applied to image""".format(deskewCount))
+    stdo(1, """   '- {} number of De-skewing applied to image""".format(deskewCount))
 
     return img
 
@@ -1489,11 +1548,11 @@ def sobel_gradient(image, scale):
     dst = cv2.addWeighted(abs_grad_x, 0.5, abs_grad_y, 0.5, 0)
     return dst
 
-def sharpening(image, kernel_size=(5, 5), alpha=1.5, beta=-0.7, gamma=0, over_run = 0):
+def sharpening(image, kernel_size=(5, 5), alpha=1.5, beta=-0.7, gamma=0, iteration=0):
     image_blurred = cv2.GaussianBlur(image, kernel_size, 20)
     image_sharpened = cv2.addWeighted(image, alpha, image_blurred, beta, gamma, image_blurred)
 
-    for _ in range(over_run):
+    for _ in range(iteration):
         image_blurred = cv2.GaussianBlur(image_sharpened, kernel_size, 20)
         image_sharpened = cv2.addWeighted(image_sharpened, alpha, image_blurred, beta, gamma, image_blurred)
 
@@ -1510,7 +1569,7 @@ def Linear_Fitting_on_Locally_Deflection_Algorithm(list_line_points, tolerance=3
     -------
     METHODS
     -------
-    1. Method Extraction of Coefficient with Repetitional Values at Sequence and Optimizing Non Tolerance Values;
+    1. Method Extraction of Coefficient with Repetition Values at Sequence and Optimizing Non Tolerance Values;
         Get repetition of values from some function like histogram(list_line_points)
             Repetition of values is "element_occurrence_list"
             Values is "element_list"
@@ -1848,85 +1907,6 @@ def sequence_Changes_Detection_1D(array_like, tolerance, store_last_tolerance=Tr
     else:
         return detected_sequence_changes_1d
 
-def manipulate(img, preprocess, configs):
-
-    if preprocess == "" or preprocess == [] or preprocess == [""]:
-        stdo(2, "Image manupilation failed because of no option")
-        return img
-
-    else:
-        manipulatedImg = img  # For backup
-
-        switcher = {
-            "draw_circle": draw_circle,
-            "draw_rectangle": draw_rectangle,
-            # "fast_fourier_transform": fast_fourier_transform,
-            "erosion": erosion,
-            "dilation": dilation,
-            "crop": crop,
-            "resize": resize,
-            "expand": expand,
-            "grayscale": grayscale,
-            "convert_RGB": convert_RGB,
-            "invert_color": invert_color,
-            "bilateral_blur": bilateral_blur,
-            "median_blur": median_blur,
-            "gaussian_blur": gaussian_blur,
-            "canny_edge_detection": canny_edge_detection,
-            "threshold": threshold,
-            "contours": contours,
-            "label_connected": label_connected,
-            "deskew": deskew,
-            # "detectCircles": detectCircles,
-        }
-        parameter_contour = {
-            "draw": 3,
-            # "fast_fourier_transform": 0,
-            "erosion": 3,
-            "dilation": 3,
-            "crop": 3,
-            "resize": 2,
-            "expand": 3,
-            "grayscale": 0,
-            "convert_RGB": 0,
-            "invert_color": 0,
-            "bilateral_blur": 3,
-            "median_blur": 1,
-            "gaussian_blur": 3,
-            "canny_edge_detection": 2,
-            "threshold": 2,
-            "contours": 0,
-            "label_connected": 0,
-            "deskew": 2,
-            "detectCircles": 0,
-        }
-
-        for prp in preprocess:  # Do all manipulations given as argument (preprocess)
-            stdo(1, "Image Manipulating with {0} preprocess option.".format(str(prp)))
-
-            manipulation = switcher.get(prp)
-
-            sConfigs = []  # Specific configs of one function manupilation
-            pC = parameter_contour.get(prp)  # Get Parameter number
-
-            if len(configs) != 0:
-                for i in range(pC):
-                    sConfigs.append(configs[i])
-
-            stdo(
-                1,
-                "'{0}' image manupilation started with {1} configs".format(
-                    str(prp), str(sConfigs)
-                ),
-            )
-            manipulatedImg = manipulation(manipulatedImg, sConfigs)
-
-            if len(configs) != 0:
-                for i in range(pC):
-                    configs.pop(0)
-
-        return manipulatedImg
-
 def color_Range_Mask(
         img, 
         color_palette_lower=(0, 0, 0), 
@@ -1936,11 +1916,11 @@ def color_Range_Mask(
     ):
     
     if is_HSV:
-        color_tranformed = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        color_transformed = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     else:
-        color_tranformed = img
+        color_transformed = img
         
-    mask = cv2.inRange(color_tranformed, color_palette_lower, color_palette_upper)
+    mask = cv2.inRange(color_transformed, color_palette_lower, color_palette_upper)
     
     """
     area = 0
@@ -1975,23 +1955,1880 @@ def color_Range_Mask(
         
     return mask, max_matched_frame_coords
 
+def color_Range_Mask_Using_Palette(
+        img, 
+        dict_color_palette, 
+        type_color='HSV', 
+        ranged_color='green', 
+        morph_kernel=[5,5], 
+        rso_ratio=1000,
+        area_threshold=5000, 
+        pattern_id='0',
+        configuration_id='N/A', 
+        show_result=False, 
+        show_specified_component=None
+    ):
+    
+    start_time = time.time()
+    
+    if type_color == 'HSV':
+        color_transformed = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    else:
+        color_transformed = img
+    
+    lower = dict_color_palette[ranged_color][type_color]['lower']
+    upper = dict_color_palette[ranged_color][type_color]['upper']
+    lower = np.array(lower, dtype="uint8")
+    upper = np.array(upper, dtype="uint8")
+    mask = cv2.inRange(color_transformed, lower, upper)
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    morph_dilate = cv2.morphologyEx(mask, cv2.MORPH_DILATE, kernel)
+    
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (morph_kernel[0], morph_kernel[1]))
+    morph_close = cv2.morphologyEx(morph_dilate.copy(), cv2.MORPH_CLOSE, kernel)
+    
+    rso = remove_Small_Object(morph_close.copy(), ratio=rso_ratio)[0]    
+    contours, _ = cv2.findContours(rso, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+    
+    # if (show_result == True) and (show_specified_component is not None) and (show_specified_component == int(pattern_id)):
+    #    show_image([img,color_transformed,mask,morph,rso], ['ORG','CVT','MASKED','MORPH','RSO'], open_order=5, figsize=((15,7)))
+    
+    area = 0
+    if contours:
+        for contour in contours:
+            area += cv2.contourArea(contour)
+    else:
+        area = 0
+    
+    if area >= area_threshold:    
+        cnt = contours[0]
+        x,y,w,h = cv2.boundingRect(cnt)
+        max_matched_frame_coords = np.array([x, y, w, h])
+    else:
+        max_matched_frame_coords = np.array([-1, -1, -1, -1])
+    
+    result_dashboard = ""
+    stop_time = (time.time() - start_time) * 1000    
+    if show_result:
+        # stdo(1, "[{}][{}]: Color_Area:{} | Color_Area-Threshold:{}".format(pattern_id, configuration_id, area, area_threshold))
+        stop_time = (time.time() - start_time) * 1000
+        
+        temp_pattern_id = str(pattern_id)
+        temp_configuration_id = str(configuration_id)
+        temp_area = str(area)
+        temp_area_threshold = str(area_threshold)
+        temp_stop_time = str(np.round(stop_time, 2))
+        
+        # result_dashboard = "[{}][{}] Color_A:{} - Color_A-Thr:{} - T:{:.2f}ms".format(pattern_id, configuration_id, area, area_threshold, stop_time)
+        result_dashboard = "[" + temp_pattern_id + "]" + "[" + temp_configuration_id + "]" + "\n-C_A:" + temp_area + "\n-C_A.Thr:" + temp_area_threshold + "\n-T:" + temp_stop_time + "ms"
+    
+        
+        image_pack = [img, color_transformed, mask, morph_dilate, morph_close, rso]
+        title_pack = [
+            configuration_id + "_1_ORG_" + str(pattern_id), 
+            configuration_id + "_2_CVT_" + str(pattern_id), 
+            configuration_id + "_3_MASKED_" + str(pattern_id), 
+            configuration_id + "_4_MORPH_D" + str(pattern_id),
+            configuration_id + "_5_MORPH_C" + str(pattern_id),
+            configuration_id + "_6_RSO_" + str(pattern_id),
+        ]
+        save_image(image_pack, path="temp_files/color_Range_Mask_Using_Palette/", filename=title_pack, format="png")
+        
+    return area, max_matched_frame_coords, result_dashboard
+
 def image_Undistortion(image, undistortion_camera_matrix, undistortion_distortion_coefficients, undistortion_new_camera_matrix):
     dst = cv2.undistort(
-            image,
-            undistortion_camera_matrix, 
-            undistortion_distortion_coefficients, 
-            None, 
-            undistortion_new_camera_matrix
-        )
+        image,
+        undistortion_camera_matrix, 
+        undistortion_distortion_coefficients, 
+        None, 
+        undistortion_new_camera_matrix
+    )
     return dst
+
+def coordinate_Undistortion(coords, undistortion_camera_matrix, undistortion_distortion_coefficients, undistortion_new_camera_matrix):
+    undist_coordinates = cv2.undistortPoints(
+        src = coords, # (coords[0], coords[1]),
+        cameraMatrix = undistortion_camera_matrix, 
+        distCoeffs = undistortion_distortion_coefficients,
+        P = undistortion_new_camera_matrix
+    )[0][0]
+    
+    undist_coords_x, undist_coords_y = [int(i) for i in undist_coordinates]
+    
+    return undist_coords_x, undist_coords_y 
+
+def coordinate_Distortion_Back(coords, undistortion_new_camera_matrix, undistortion_distortion_coefficients):
+    # https://answers.opencv.org/question/148670/re-distorting-a-set-of-points-after-camera-calibration/
+    # https://stackoverflow.com/questions/21615298/opencv-distort-back
+    
+    fx = undistortion_new_camera_matrix[0,0]
+    fy = undistortion_new_camera_matrix[1,1]
+    cx = undistortion_new_camera_matrix[0,2]
+    cy = undistortion_new_camera_matrix[1,2]
+    k1 = undistortion_distortion_coefficients[0][0] * -1
+    k2 = undistortion_distortion_coefficients[0][1] * -1
+    k3 = undistortion_distortion_coefficients[0][4] * -1
+    p1 = undistortion_distortion_coefficients[0][2] * -1
+    p2 = undistortion_distortion_coefficients[0][3] * -1
+    
+    x = coords[0]
+    y = coords[1]
+    
+    x = (x - cx) / fx
+    y = (y - cy) / fy
+
+    r2 = x*x + y*y
+
+    xDistort = x * (1 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2)
+    yDistort = y * (1 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2)
+
+    xDistort = xDistort + (2 * p1 * x * y + p2 * (r2 + 2 * x * x))
+    yDistort = yDistort + (p1 * (r2 + 2 * y * y) + 2 * p2 * x * y)
+
+    xDistort = xDistort * fx + cx;
+    yDistort = yDistort * fy + cy;
+
+    return round(xDistort), round(yDistort)
 
 def image_Perspective_Warping(image, homography_matrix):
     dst = cv2.warpPerspective(
-            image, 
-            homography_matrix, 
-            (image.shape[1], image.shape[0])
-        )
+        image, 
+        homography_matrix, 
+        (image.shape[1], image.shape[0])
+    )
     return dst
+
+def image_Make_Border(image, border_range=[10,10,10,10], border_flag=cv2.BORDER_CONSTANT, border_value=[0,0,0]):
+    dst = cv2.copyMakeBorder(
+        image, 
+        *border_range, 
+        border_flag,
+        None,
+        border_value
+    )
+    return dst
+
+def image_Calculate_Border_Range(image, max_w=100, max_h=100):
+    top = int( (max_h // 2) - (image.shape[0] // 2) )
+    bottom = top
+    if top + bottom + image.shape[0] < max_h:
+        bottom += 1
+    
+    left = int( (max_w // 2) - (image.shape[1] // 2) )
+    right = left
+    if left + right + image.shape[1] < max_w:
+        right += 1
+    return top, bottom, left, right
+
+def remove_Pixel_Width_old(image, contours, pixel_width=2, pixel_width_color=[0,0,255], counter=0, is_color=False):
+    #contours = np.array(contours, dtype=object)
+    
+    dict_faults = dict()
+    list_dict_actual_faults = list()
+    list_dict_noisy_pixels = list()
+    
+    for cnt in contours:
+        if len(cnt) > 1:
+            a = []
+            b = []
+            for c in cnt:
+                a.append(c[0][0])
+                b.append(c[0][1])
+            
+            # print(counter, "x : ",  a)
+            # print(counter, "y : ",  b)
+            
+            x_diff = abs(np.diff(a))
+            y_diff = abs(np.diff(b))
+            
+            areas = contour_Areas([cnt], is_chosen_max=True, is_contour_number_for_area=False)
+            
+            if (np.any(x_diff[x_diff >= pixel_width] >= pixel_width)) and (np.any(y_diff[y_diff >= pixel_width] >= pixel_width)): # NOT REMOVE #
+                
+                """
+                stdo(1, "NOK {}: {} ---- | x:{} y:{} | ---- | CondX:{} CondY:{} | ---- Area:{}".format(
+                    counter,
+                    cnt.reshape(-1),
+                    x_diff,
+                    y_diff,
+                    (len(cnt) / 2),
+                    (len(cnt) / 2),
+                    areas
+                ))
+                """
+                for c in cnt:
+                    list_dict_actual_faults.append(c[0])
+                
+                continue
+            
+            else: # ELIMINATE #
+                
+                """
+                stdo(1, "OK {}: {} ---- | x:{} y:{} | ---- | CondX:{} CondY:{} | ---- Area:{}".format(
+                        counter,
+                        cnt.reshape(-1),
+                        x_diff,
+                        y_diff,
+                        (len(cnt) / 2),
+                        (len(cnt) / 2),
+                        areas
+                ))
+                """
+                    
+                if is_color:
+                    if 4 <= areas[0] <= 6:
+                        cv2.drawContours(image, [cnt], 0, [255, 165, 0], 1)
+                    
+                    elif 6 <= areas[0] <= 8:
+                        cv2.drawContours(image, [cnt], 0, [0, 165, 255], 1)
+                        
+                    else:
+                        cv2.drawContours(image, [cnt], 0, pixel_width_color, 1)
+                    
+                else:
+                    cv2.drawContours(image, [cnt], 0, [0, 0, 0], 1)
+                
+                for c in cnt:
+                    list_dict_noisy_pixels.append(c[0])
+    
+    dict_faults['actual_faults'] = np.array(list_dict_actual_faults)
+    dict_faults['noisy_pixels'] = np.array(list_dict_noisy_pixels)
+    
+    # stdo(1, "[{}] actual_faults: {}".format(counter, dict_faults['actual_faults'].reshape(-1)))
+    # stdo(1, "[{}] noisy_pixels: {}".format(counter, dict_faults['noisy_pixels'].reshape(-1)))
+                
+    return image, dict_faults
+    #return image
+
+def remove_Pixel_Width(image, contours, pixel_width=2, pixel_width_color=[0,0,255], method=1, counter=0, pano_sector_index='L', symbol_hull_list=[], is_color=False, title=''):
+    
+    dict_faults = list()
+    # dict_faults = {"pano_sector_index":pano_sector_index, "symbol_id":counter, "contour_id":0, "actual_faults":[], "noisy_pixels":[], "hull_w":[], "hull_h":[], "hull_area":[], "hull_count_pixel_area":[]}
+
+    if method == 1:
+        for id, cnt in enumerate(contours):
+            if len(cnt) < 1:
+                continue  # Çok küçük konturları atla
+            
+            contour_width = compute_Contour_Thickness_2(cnt, img_shape=image.shape)
+            
+            """
+            stdo(1, "boundingRect {}: {}".format(
+                id,
+                contour_width
+            ))
+            """
+            
+            # Eğer gerçek genişlik pixel_width'ten küçükse, gürültü olarak kabul et
+            if contour_width <= pixel_width:
+                color = pixel_width_color if is_color else [0, 0, 0]
+                cv2.drawContours(image, [cnt], -1, color, 1)
+                dict_faults["noisy_pixels"].extend(cnt.reshape(-1, 2))
+            else:
+                dict_faults["actual_faults"].extend(cnt.reshape(-1, 2))
+        
+    if method == 2:
+        for id, cnt in enumerate(contours):
+            if len(cnt) < 1:
+                continue  # Çok küçük konturları atla
+            
+            # Minimum alan kaplayan dikdörtgeni hesapla
+            rect = cv2.minAreaRect(cnt)  # (center, (width, height), angle)
+            (cx, cy), (w, h), angle = rect  # Merkezi, genişliği, yüksekliği ve açıyı al
+            if max(w, h) < pixel_width:
+                if is_color:
+                    color = pixel_width_color
+                else:
+                    color = [0, 0, 0]
+
+                cv2.drawContours(image, [cnt], -1, color, 1)
+                dict_faults["noisy_pixels"].extend(cnt.reshape(-1, 2))
+            else:
+                dict_faults["actual_faults"].extend(cnt.reshape(-1, 2))
+        
+    if method == 3:
+        for id, cnt in enumerate(contours):
+            if len(cnt) < 1:
+                continue  # Çok küçük konturları atla
+        
+            x_vals = [c[0][0] for c in cnt]
+            y_vals = [c[0][1] for c in cnt]
+
+            x_range = np.ptp(x_vals)  # max(x) - min(x)
+            y_range = np.ptp(y_vals)  # max(y) - min(y)
+
+            areas = contour_Areas([cnt], is_chosen_max=True, is_contour_number_for_area=False)
+            x, y, w, h = cv2.boundingRect(cnt)
+            
+            stdo(1, "remove_Pixel_Width {}: {} | x:{} y:{} | CondX:{} CondY:{} | Area:{}".format(
+                counter,
+                cnt.reshape(-1),
+                x_range,
+                y_range,
+                w,
+                h,
+                areas
+            ))
+            
+            if x_range >= pixel_width or y_range >= pixel_width:  # Gürültü olmayanlar
+                dict_faults["actual_faults"].extend(cnt.reshape(-1, 2))
+            else:  # Gürültü olarak kabul edilenler
+                if is_color:
+                    color = [255, 165, 0] if 4 <= areas[0] <= 6 else [0, 165, 255] if 6 < areas[0] <= 8 else pixel_width_color
+                else:
+                    color = [0, 0, 0]
+
+                cv2.drawContours(image, [cnt], -1, color, 1)
+                dict_faults["noisy_pixels"].extend(cnt.reshape(-1, 2))
+        
+        
+        """
+        # Bounding box hesapla (x, y, genişlik, yükseklik)
+        x, y, w, h = cv2.boundingRect(cnt)
+        
+        stdo(1, "boundingRect {}: {} | x:{} y:{}  w:{} h:{}".format(
+            counter,
+            cnt.reshape(-1),
+            x,
+            y,
+            w,
+            h,
+        ))
+
+        # Eğer hem genişlik hem yükseklik pixel_width'ten küçükse, gürültü olarak işaretle
+        if w <= pixel_width or h <= pixel_width:
+            if is_color:
+                color = pixel_width_color
+            else:
+                color = [0, 0, 0]
+
+            cv2.drawContours(image, [cnt], -1, color, 1)
+            dict_faults["noisy_pixels"].extend(cnt.reshape(-1, 2))
+        else:
+            dict_faults["actual_faults"].extend(cnt.reshape(-1, 2))
+        """
+    
+    if method == 4:
+        # Bağlı bileşenleri belirle (her konturu ayrı bir bileşen olarak düşün)
+        mask = np.zeros(image.shape[:2], dtype=np.uint8)
+        for cnt in contours:
+            cv2.drawContours(mask, [cnt], -1, 255, -1)  # Konturu doldur
+
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+
+        for cnt in contours:
+            if len(cnt) < 2:
+                continue  # Çok küçük konturları atla
+
+            # Konturun hangi bileşene ait olduğunu bul
+            x, y, w, h = cv2.boundingRect(cnt)
+            component_label = labels[y + h // 2, x + w // 2]  # Konturun merkezindeki label
+
+            # Eğer bu bileşenin genişliği küçükse, tamamen kaldır
+            if stats[component_label, cv2.CC_STAT_WIDTH] < pixel_width and stats[component_label, cv2.CC_STAT_HEIGHT] < pixel_width:
+                color = pixel_width_color if is_color else [0, 0, 0]
+                cv2.drawContours(image, [cnt], -1, color, 1)
+                dict_faults["noisy_pixels"].extend(cnt.reshape(-1, 2))
+            else:
+                # **Büyük hataların dış konturlarını koruyoruz!**
+                dict_faults["actual_faults"].extend(cnt.reshape(-1, 2))
+    
+    if method == 5:
+        
+        if is_color:
+            draw_color = cv2.cvtColor(image.copy(), cv2.COLOR_GRAY2BGR)
+        else:
+            draw_binary = image.copy()
+        
+        list_cnt = []
+        for id, cnt in enumerate(contours):
+            #if len(cnt) < 1:
+            #    continue  # Çok küçük konturları atla
+
+            # Konturun hangi bileşene ait olduğunu bul
+            # x, y, w, h = cv2.boundingRect(cnt)
+            area = cv2.contourArea(cnt) # stats[1:, cv2.CC_STAT_AREA][id]
+                
+            # rect, contour_width = compute_Contour_Thickness(id, cnt)
+        
+            rect = cv2.minAreaRect(cnt)
+            box = cv2.boxPoints(rect)
+            box = np.intp(box)  # Köşe noktalarını tam sayı yap
+
+            # Uzaklıkları hesapla (dört kenarın uzunlukları)
+            edge_lengths = [
+                np.linalg.norm(box[i] - box[(i + 1) % 4]) for i in range(4)
+            ]
+            contour_width = min(edge_lengths)
+            
+            x = round(rect[0][0])
+            y = round(rect[0][1])
+            w = round(rect[1][0])
+            h = round(rect[1][1])
+            
+            
+            ##########
+            # mina = cv2.minAreaRect(cnt)
+            # box = cv2.boxPoints(mina)
+            # box = np.intp(box)
+            # x_ptp = np.ptp(box[:,0]) 
+            # y_ptp = np.ptp(box[:,1])
+            # if x_ptp == 0 and y_ptp == 0:
+            #     ptp_area = 1
+            # else:
+            #     ptp_area = x_ptp * y_ptp
+            
+            if  ( 
+                (x <= pixel_width) or (y <= pixel_width)
+            ) or (
+                (w <= pixel_width) or (h <= pixel_width)
+            ):
+                if (contour_width < pixel_width):
+                    
+                    list_cnt.append(cnt)
+                    
+                    # if is_color:
+                        # draw_color = cv2.drawContours(draw_color, [cnt], -1, pixel_width_color, 1)
+                    # else:
+                        # draw_binary = cv2.drawContours(draw_binary, [cnt], -1, (0,0,0), 1)
+                    # dict_faults["actual_faults"].extend(cnt.reshape(-1, 2))
+                
+            if area < (w*h)/10:
+                list_cnt.append(cnt)
+                
+                # if is_color:
+                    # draw_color = cv2.drawContours(draw_color, [cnt], -1, pixel_width_color, 1)
+                # else:
+                    # draw_binary = cv2.drawContours(draw_binary, [cnt], -1, (0,0,0), 1)
+                # dict_faults["actual_faults"].extend(cnt.reshape(-1, 2))
+        
+            # else:
+            #     dict_faults["noisy_pixels"].extend(cnt.reshape(-1, 2))
+                
+        if is_color:
+            draw_color = cv2.drawContours(draw_color, list_cnt, -1, pixel_width_color, 1)
+            image = draw_color
+        else:
+            draw_binary = cv2.drawContours(draw_binary, list_cnt, -1, (0,0,0), 1)
+            image = draw_binary
+            
+        del list_cnt
+
+    if method == 6:
+        
+        draw_color = cv2.cvtColor(image.copy(), cv2.COLOR_GRAY2BGR) if is_color else image.copy()
+        list_cnt = []
+
+        for id, cnt in enumerate(contours):
+            
+            flag_noisy_pixel = False
+            
+            dict_faults.append(dict())
+            # NOT: dict_faults[id] --> id = contour_id
+            dict_faults[id]["pano_sector_index"] = pano_sector_index
+            dict_faults[id]["symbol_id"] = counter
+            dict_faults[id]["noisy_pixels"] = []
+            dict_faults[id]["actual_faults"] = []
+            dict_faults[id]["max_thickness"] = []
+            
+            area = cv2.contourArea(cnt)
+            if area <= 1:
+                list_cnt.append(cnt)
+                dict_faults[id]["noisy_pixels"].extend(cnt.reshape(-1, 2))
+                continue
+
+            _, _, w, h = cv2.boundingRect(cnt)
+            
+            hull = cv2.convexHull(cnt)
+            area_hull = cv2.contourArea(hull)
+            rect_hull = cv2.minAreaRect(hull)
+            # w_hull = rect_hull[1][1]
+            # h_hull = rect_hull[1][0]
+            # Köşe noktaları (float)
+            box_f = cv2.boxPoints(rect_hull)  # float döner
+            # box_f = np.array(box_f, dtype=np.float32) # İstersen float32 olarak sabitleyebilirsin
+
+            # Kenar vektörleri
+            edge1 = box_f[1] - box_f[0]
+            edge2 = box_f[2] - box_f[1]
+
+            # Yatay eksene yakın kenarı width olarak al
+            if abs(edge1[0]) > abs(edge1[1]):
+                w_hull = np.linalg.norm(edge1)  # float
+                h_hull = np.linalg.norm(edge2)  # float
+            else:
+                w_hull = np.linalg.norm(edge2)  # float
+                h_hull = np.linalg.norm(edge1)  # float
+            dict_faults[id]["hull_w"] = round(w_hull, 2)
+            dict_faults[id]["hull_h"] = round(h_hull, 2)
+            dict_faults[id]["hull_area"] = round(area_hull, 2)
+            
+            mask = np.zeros_like(image)
+            cv2.drawContours(mask, [cnt], -1, color=255, thickness=-1)
+            masked = cv2.bitwise_and(image, image, mask=mask)
+            count_pixel = cv2.countNonZero(masked)
+            dict_faults[id]["hull_count_pixel_area"] = round(count_pixel, 2)
+            
+            dist_transform = cv2.distanceTransform(mask, distanceType=cv2.DIST_L2, maskSize=5)
+            max_thickness = dist_transform.max() * 2
+
+            # if ((w_hull <= pixel_width) or (h_hull <= pixel_width)) or ((w <= pixel_width)) or ((h <= pixel_width) or max_thickness <= pixel_width):
+            #     list_cnt.append(cnt)
+            #     dict_faults[id]["noisy_pixels"].extend(cnt.reshape(-1, 2))
+            #     flag_noisy_pixel = True
+
+            # # elif ( ((w*h) * 0.1) > area ) and ( ((w_hull*h_hull) * 0.8) > area_hull ): # if ((w*h)/2.5 > area_hull) and ((w*h)//10 > area): # Change 20.07.2025
+            # #     list_cnt.append(cnt)
+            # if ( ((w*h) * 0.2) > count_pixel ) and ( ((w_hull*h_hull) * 0.5) > count_pixel ):
+            #     list_cnt.append(cnt)
+            #     dict_faults[id]["noisy_pixels"].extend(cnt.reshape(-1, 2))
+            #     flag_noisy_pixel = True
+            
+            # if ( 
+            #     (w_hull > image.shape[1] / 3) and (h_hull < image.shape[0] / 6) 
+            # ) or (
+            #     (h_hull > image.shape[0] / 3) and (w_hull < image.shape[1] / 6)
+            # ): # Image Represent
+            #     flag_noisy_pixel = False
+            if ( 
+                (w_hull > image.shape[1] / 3) and (h_hull < image.shape[0] / 6) 
+            ) or (
+                (h_hull > image.shape[0] / 3) and (w_hull < image.shape[1] / 6)
+            ): # Image Represent
+                list_cnt.append(cnt)
+                flag_noisy_pixel = True
+            
+            else:
+                if ((w_hull/h_hull) > 5 or (h_hull/w_hull) > 5): # Thin-Long Noise Fault #
+                    
+                    if ( (w * h) * 0.3 > count_pixel ) or ( (w_hull * h_hull) * 0.3 > count_pixel ):
+                    
+                        list_cnt.append(cnt)
+                        dict_faults[id]["noisy_pixels"].extend(cnt.reshape(-1, 2))
+                        flag_noisy_pixel = True
+                        
+                if ( (w * h) * 0.3 > count_pixel ) or ( (w_hull * h_hull) * 0.3 > count_pixel ):
+                    list_cnt.append(cnt)
+                    dict_faults[id]["noisy_pixels"].extend(cnt.reshape(-1, 2))
+                    flag_noisy_pixel = True
+            
+            if title == 'inside':
+                if (w_hull <= pixel_width) or (h_hull <= pixel_width):
+                    list_cnt.append(cnt)
+                    flag_noisy_pixel = True
+            
+            if not flag_noisy_pixel:
+                dict_faults[id]["actual_faults"].extend(cnt.reshape(-1, 2))
+                # dict_faults[id]["max_thickness"].extend(max_thickness)
+            
+            # stdo(1, "[{}][{}] - area:{} | - wh:({},{}) | w_hull:{}, h_hull:{}) | pixel_width:{} | hull_area:{}".format(
+            #     counter, id, 
+            #     area,
+            #     w, h,
+            #     w_hull, h_hull,
+            #     pixel_width,
+            #     area_hull,
+            # ))
+
+        # if is_color:
+        #     image = cv2.drawContours(draw_color, list_cnt, -1, pixel_width_color, 1)
+        # else:
+        #     image = cv2.drawContours(image, list_cnt, -1, (0, 0, 0), 1)
+        #     # stdo(1, "[{}]: remove_Pixel_Width: {}".format(counter, list_cnt))
+        if is_color:
+            image = cv2.drawContours(draw_color, list_cnt, -1, color=pixel_width_color, thickness=-1)
+        else:
+            image = cv2.drawContours(image, list_cnt, -1, color=(0, 0, 0), thickness=-1)
+    
+    if method == 7:
+        
+        draw_color = cv2.cvtColor(image.copy(), cv2.COLOR_GRAY2BGR) if is_color else image.copy()
+        list_cnt = []
+        # separator = Fore.YELLOW + " -> " + Style.RESET_ALL
+        
+        for id, cnt in enumerate(contours):
+            
+            # flag_status = "NOK"
+            flag_noisy_pixel = False
+            
+            dict_faults.append(dict())
+            # NOT: dict_faults[id] --> id = contour_id
+            dict_faults[id]["pano_sector_index"] = pano_sector_index
+            dict_faults[id]["symbol_id"] = counter
+            dict_faults[id]["noisy_pixels"] = []
+            dict_faults[id]["actual_faults"] = []
+            
+            area = cv2.contourArea(cnt)
+            if area < 1:
+                list_cnt.append(cnt)
+                dict_faults[id]["noisy_pixels"].extend(cnt.reshape(-1, 2))
+                continue
+
+            _, _, w, h = cv2.boundingRect(cnt)
+            
+            hull = cv2.convexHull(cnt)
+            area_hull = cv2.contourArea(hull)
+            rect_hull = cv2.minAreaRect(hull)
+            box = cv2.boxPoints(rect_hull)
+            box = np.intp(box)
+            if is_color:
+                cv2.drawContours(draw_color, [box], -1, (0, 255, 0), 1)
+            
+            w_hull = rect_hull[1][0]
+            h_hull = rect_hull[1][1]
+            dict_faults[id]["hull_w"] = round(w_hull, 2)
+            dict_faults[id]["hull_h"] = round(h_hull, 2)
+            dict_faults[id]["hull_area"] = round(area_hull, 2)
+            
+            mask = np.zeros_like(image)
+            cv2.drawContours(mask, [cnt], -1, color=255, thickness=-1)
+            masked = cv2.bitwise_and(image, image, mask=mask)
+            count_pixel = cv2.countNonZero(masked)
+            dict_faults[id]["hull_count_pixel_area"] = round(count_pixel, 2)
+
+            # dashboard =  "[{}] - pixel_width:{} | area:{} - wh:({:.2f},{:.2f}) | [startx,starty]:[{},{}] hull_area:{} - hull_wh:({:.2f},{:.2f}) | count_pixel:{}".format(
+            #     id, 
+            #     pixel_width,
+            #     area,
+            #     w, h,
+            #     box[0][0], box[0][1],
+            #     area_hull,
+            #     w_hull, h_hull,
+            #     count_pixel
+            # )
+            
+            if ( (w_hull <= pixel_width) or (h_hull <= pixel_width) ) or ( (w <= pixel_width) or (h <= pixel_width) ):
+                
+                if ( ((w*h) * 0.2) < count_pixel ) and ( ((w_hull*h_hull) * 0.5) < count_pixel ):
+                    pass
+                else:
+                    list_cnt.append(cnt)
+                    dict_faults[id]["noisy_pixels"].extend(cnt.reshape(-1, 2))
+                    flag_noisy_pixel = True
+                    # flag_status = "OK"
+                    # decide_dashboard = Fore.RED + "NOISE" + Style.RESET_ALL
+                    # dashboard = dashboard + separator  + decide_dashboard
+                    # stdo(1, dashboard)
+                    # continue
+
+            # elif ( ((w*h) * 0.1) > area ) and ( ((w_hull*h_hull) * 0.8) > area_hull ):
+            #     list_cnt.append(cnt)
+            #     flag_status = "OK"
+            if ( ((w*h) * 0.2) > count_pixel ) and ( ((w_hull*h_hull) * 0.5) > count_pixel ):
+                list_cnt.append(cnt)
+                dict_faults[id]["noisy_pixels"].extend(cnt.reshape(-1, 2))
+                flag_noisy_pixel = True
+                # flag_status = "OK"
+                
+            # if not is_color:
+            #     if flag_status == "OK":
+            #         decide_dashboard = Fore.RED + "NOISE" + Style.RESET_ALL
+            #     else:
+            #         decide_dashboard = Fore.GREEN + "REAL-FAULT" + Style.RESET_ALL
+            #     dashboard = dashboard + separator  + decide_dashboard
+            #     stdo(1, dashboard)
+
+            if not flag_noisy_pixel:
+                dict_faults[id]["actual_faults"].extend(cnt.reshape(-1, 2))
+                
+        if is_color:
+            image = cv2.drawContours(draw_color, list_cnt, -1, color=pixel_width_color, thickness=cv2.FILLED)
+        else:
+            image = cv2.drawContours(image, list_cnt, -1, color=(0, 0, 0), thickness=cv2.FILLED)
+    
+    if method == 8:
+        
+        draw_color = cv2.cvtColor(image.copy(), cv2.COLOR_GRAY2BGR) if is_color else image.copy()
+        list_cnt = []
+
+        for id, cnt in enumerate(contours):
+            
+            flag_noisy_pixel = False
+            
+            dict_faults.append(dict())
+            # NOT: dict_faults[id] --> id = contour_id
+            dict_faults[id]["pano_sector_index"] = pano_sector_index
+            dict_faults[id]["symbol_id"] = counter
+            dict_faults[id]["noisy_pixels"] = []
+            dict_faults[id]["actual_faults"] = []
+            dict_faults[id]["max_thickness"] = []
+            
+            area = cv2.contourArea(cnt)
+            if area <= 0.3:
+                list_cnt.append(cnt)
+                dict_faults[id]["noisy_pixels"].extend(cnt.reshape(-1, 2))
+                continue
+
+            _, _, w, h = cv2.boundingRect(cnt)
+            
+            hull = cv2.convexHull(cnt)
+            area_hull = cv2.contourArea(hull)
+            rect_hull = cv2.minAreaRect(hull)
+            # w_hull = rect_hull[1][1]
+            # h_hull = rect_hull[1][0]
+            # Köşe noktaları (float)
+            box_f = cv2.boxPoints(rect_hull)  # float döner
+            # box_f = np.array(box_f, dtype=np.float32) # İstersen float32 olarak sabitleyebilirsin
+
+            # Kenar vektörleri
+            edge1 = box_f[1] - box_f[0]
+            edge2 = box_f[2] - box_f[1]
+
+            # Yatay eksene yakın kenarı width olarak al
+            if abs(edge1[0]) > abs(edge1[1]):
+                w_hull = np.linalg.norm(edge1)  # float
+                h_hull = np.linalg.norm(edge2)  # float
+            else:
+                w_hull = np.linalg.norm(edge2)  # float
+                h_hull = np.linalg.norm(edge1)  # float
+            dict_faults[id]["hull_w"] = round(w_hull, 2)
+            dict_faults[id]["hull_h"] = round(h_hull, 2)
+            dict_faults[id]["hull_area"] = round(area_hull, 2)
+            
+            mask = np.zeros_like(image)
+            cv2.drawContours(mask, [cnt], -1, color=255, thickness=-1)
+            masked = cv2.bitwise_and(image, image, mask=mask)
+            count_pixel = cv2.countNonZero(masked)
+            dict_faults[id]["hull_count_pixel_area"] = round(count_pixel, 2)
+        
+            if ( (w_hull/h_hull > 8) or (h_hull/w_hull > 8) ): # Thin-Long Noise Fault #
+                
+                if ( (h_hull < 3) and (h_hull * 15 < w_hull) ) or ( (h_hull <= 1) ):
+                    list_cnt.append(cnt)
+                    dict_faults[id]["noisy_pixels"].extend(cnt.reshape(-1, 2))
+                    flag_noisy_pixel = True
+                
+            if ( (w_hull * h_hull) * 0.5 > count_pixel ):
+                list_cnt.append(cnt)
+                dict_faults[id]["noisy_pixels"].extend(cnt.reshape(-1, 2))
+                flag_noisy_pixel = True
+            
+            if not flag_noisy_pixel:
+                dict_faults[id]["actual_faults"].extend(cnt.reshape(-1, 2))
+                # dict_faults[id]["max_thickness"].extend(max_thickness)
+                    
+        if is_color:
+            image = cv2.drawContours(draw_color, list_cnt, -1, color=pixel_width_color, thickness=-1)
+        else:
+            image = cv2.drawContours(image, list_cnt, -1, color=(0, 0, 0), thickness=-1)
+    
+    # dict_faults["actual_faults"] = np.array(dict_faults["actual_faults"])
+    # dict_faults["noisy_pixels"] = np.array(dict_faults["noisy_pixels"])
+
+    return image, dict_faults
+    
+def detect_Line_Object_old(line_eliminate_image, draw_masking_image, background_color='white', flag_activate_debug_images=False):
+    
+    horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (50,1))
+    detect_horizontal = cv2.morphologyEx(line_eliminate_image, cv2.MORPH_OPEN, horizontal_kernel, iterations=2)
+    cnts = cv2.findContours(detect_horizontal, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+    
+    for cnt in cnts:
+        cv2.drawContours(draw_masking_image, [cnt], 0, (255,255,255), 3)
+        cv2.drawContours(line_eliminate_image, [cnt], 0, (0,0,0), 3)
+
+
+    vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1,50))
+    detect_vertical = cv2.morphologyEx(line_eliminate_image, cv2.MORPH_OPEN, vertical_kernel, iterations=2)
+    cnts = cv2.findContours(detect_vertical, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+    
+    for cnt in cnts:
+        cv2.drawContours(draw_masking_image, [cnt], 0, (255,255,255), 3)
+        cv2.drawContours(line_eliminate_image, [cnt], 0, (0,0,0), 3)    
+
+    kernel=np.ones((2,2))
+    line_eliminate_image = cv2.morphologyEx(line_eliminate_image, cv2.MORPH_OPEN, kernel)
+    
+    if flag_activate_debug_images:
+        list_temp_save_image = [line_eliminate_image, draw_masking_image]
+        filename = ["line_eliminate_image", "draw_masking_image"]
+        save_image(list_temp_save_image, path="temp_files/detect_Line_Object", filename=filename, format="png")
+    
+    return line_eliminate_image, draw_masking_image
+
+def detect_Line_Object(line_eliminate_image, draw_masking_image, background_color='white', pano_title='', flag_activate_debug_images=False):
+    
+    # if background_color == 'white' or background_color == 'gray':
+    line_image = np.zeros((line_eliminate_image.shape[0], line_eliminate_image.shape[1], 3), dtype=np.uint8)
+    # elif background_color == 'black' or background_color == 'piano-black':
+    #     line_image = np.ones((line_eliminate_image.shape[0], line_eliminate_image.shape[1], 3), dtype=np.uint8)
+    
+    horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (200,2))
+    detect_horizontal = cv2.morphologyEx(line_eliminate_image, cv2.MORPH_OPEN, horizontal_kernel, iterations=1)
+    cnts = cv2.findContours(detect_horizontal, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+    
+    for id, cnt in enumerate(cnts):
+        
+        # stdo(1, "[{}] detect_Line_Object-cntx: {} | {}".format(id, cnt, cnt[0][:,0]))
+        
+        #cnt[0][:,0] = 0 if cnt[0][:,0]-20 < line_eliminate_image.shape[1] else cnt[0][:,0]-20
+        # cnt[0][:,0] = 0 if cnt[0][:,0]-20 < 0 else cnt[0][:,0]-20
+        
+        if background_color == 'white':
+            cv2.drawContours(draw_masking_image, [cnt], 0, (255,255,255), 10)
+            cv2.drawContours(line_eliminate_image, [cnt], 0, (0,0,0), 10)
+            cv2.drawContours(line_image, [cnt], 0, (255,255,255), -1)
+        
+        elif background_color == 'gray - siyah sembol' or background_color == 'gray - beyaz sembol':
+            cv2.drawContours(draw_masking_image, [cnt], 0, (154,179,209), 10)
+            cv2.drawContours(line_eliminate_image, [cnt], 0, (0,0,0), 10)
+            cv2.drawContours(line_image, [cnt], 0, (154,179,209), -1)
+        
+        elif background_color == 'black' or background_color == 'piano-black':
+            cv2.drawContours(draw_masking_image, [cnt], 0, (0,0,0), 10)
+            cv2.drawContours(line_eliminate_image, [cnt], 0, (0,0,0), 10)
+            cv2.drawContours(line_image, [cnt], 0, (255,255,255), -1)
+        
+
+    vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2,200))
+    detect_vertical = cv2.morphologyEx(line_eliminate_image, cv2.MORPH_OPEN, vertical_kernel, iterations=1)
+    cnts = cv2.findContours(detect_vertical, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
+    
+    for cnt in cnts:
+        
+        # stdo(1, "[{}] detect_Line_Object-cnty: {} | {}".format(id, cnt, cnt[0][:,1]))
+        
+        #cnt[0][:,1] = 0 if cnt[0][:,1]-20 < line_eliminate_image.shape[0] else cnt[0][:,1]-20
+        # cnt[0][:,1] = 0 if cnt[0][:,1]-20 < 0 else cnt[0][:,1]-20
+        
+        if background_color == 'white':
+            cv2.drawContours(draw_masking_image, [cnt], 0, (255,255,255), 10)
+            cv2.drawContours(line_eliminate_image, [cnt], 0, (0,0,0), 10)
+            cv2.drawContours(line_image, [cnt], 0, (255,255,255), -1)
+        
+        elif background_color == 'gray - siyah sembol' or background_color == 'gray - beyaz sembol':
+            cv2.drawContours(draw_masking_image, [cnt], 0, (154,179,209), 10)
+            cv2.drawContours(line_eliminate_image, [cnt], 0, (0,0,0), 10)
+            cv2.drawContours(line_image, [cnt], 0, (154,179,209), -1)
+        
+        elif background_color == 'black' or background_color == 'piano-black':
+            cv2.drawContours(draw_masking_image, [cnt], 0, (0,0,0), 10)
+            cv2.drawContours(line_eliminate_image, [cnt], 0, (0,0,0), 10)
+            cv2.drawContours(line_image, [cnt], 0, (255,255,255), -1)   
+
+    kernel=np.ones((2,2))
+    line_eliminate_image = cv2.morphologyEx(line_eliminate_image, cv2.MORPH_OPEN, kernel)
+    
+    # if background_color == 'black' or background_color == 'piano-black':
+    #     line_image = cv2.bitwise_not(line_image)
+    line_image = cv2.cvtColor(line_image, cv2.COLOR_RGB2GRAY)
+    
+    if flag_activate_debug_images:
+        list_temp_save_image = [line_eliminate_image, line_image, draw_masking_image]
+        filename = [
+            str(pano_title)+"_0_line_eliminate_image", 
+            str(pano_title)+"_1_line_image", 
+            str(pano_title)+"_3_draw_masking_image"
+        ]
+        save_image(list_temp_save_image, path="temp_files/detect_Line_Object", filename=filename, format="jpg")
+    
+    return line_eliminate_image, line_image, draw_masking_image
+    
+def image_Flip(image, task='horizontaly'):
+    if task == 'horizontaly':
+        stdo(1, "image_Flip :::::::::::: {}".format(image.shape))
+        return cv2.flip(image, 0)
+    elif task == 'verticaly':
+        return cv2.flip(image, 1)
+
+def image_Rotate(image, task='cv2.ROTATE_180', angle_rad=None, border_value=0):
+    
+    if angle_rad != None:
+        h, w = image.shape[:2]
+        center = (w // 2, h // 2)
+        angle_degree = np.rad2deg(angle_rad)
+        M = cv2.getRotationMatrix2D(center, angle_degree, 1.0)
+        rotated = cv2.warpAffine(image, M, (w, h), borderValue=border_value)
+    
+    else:
+        if task == 'cv2.ROTATE_180':
+            rotated = cv2.rotate(image, cv2.ROTATE_180)
+        else:
+            rotated = cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    
+    return rotated
+
+def circular_Hough_Transform(image, max_radius=50, is_circle_detected_image=False):
+    circles = cv2.HoughCircles(
+        image, 
+        cv2.HOUGH_GRADIENT, 
+        dp=2, 
+        minDist=50, 
+        param1=500, 
+        param2=0.8, 
+        minRadius=1,
+        maxRadius=max_radius//2
+    )
+
+    if is_circle_detected_image:
+        color = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+    else:
+        color = -1
+        
+    if circles is not None:
+        circles = np.round(circles[0, :]).astype("int")
+        for (x,y,r) in circles:
+            #if r >= 24:
+            x, y, r = circles[0]
+            
+            """
+            else:
+                r = 24
+                x = mask.shape[0]//2
+                y = mask.shape[1]//2
+            """
+            if is_circle_detected_image:
+                cv2.circle(color, (x, y), r, (0, 255, 0), 1)
+                # image_pack = [image, color]
+                # title_pack = ["image", "color"]
+                # save_image(image_pack, path="temp_files/circular_Hough_Transform", filename=title_pack, format="png")
+    else:
+        r = image.shape[0]//10
+        x = image.shape[0]//2
+        y = image.shape[1]//2
+    
+    # stdo(1, "Image-shape: {} | Circle-params:({},{},{})".format(image.shape, x,y,r))
+    return x, y, r, color
+
+def create_Circular_Mask(h, w, center=None, radius=None):
+    
+    if center is None: # use the middle of the image
+        center = (int(w/2), int(h/2))
+    if radius is None: # use the smallest distance between the center and image walls
+        radius = min(center[0], center[1], w-center[0], h-center[1])
+    
+    Y, X = np.ogrid[:h, :w]
+    dist_from_center = np.sqrt((X - center[0])**2 + (Y-center[1])**2)
+    mask = dist_from_center <= radius
+    
+    return mask.astype("uint8")
+
+def calculation_Crop_Parameters_Of_Image_To_Focused_Interest_Area(image, inner_circle=(0,0,0), direction='up'):
+    # inner_circle= (x,y,r)
+    
+    dict_component_direction = {
+        'up': {
+            'start_x': inner_circle[0] - inner_circle[2],
+            'start_y': 0,
+            'end_x': inner_circle[0] + inner_circle[2],
+            'end_y': inner_circle[1] - inner_circle[2]
+        },
+        'down': {
+            'start_x': inner_circle[0] - inner_circle[2],
+            'start_y': inner_circle[1] + inner_circle[2],
+            'end_x': inner_circle[0] + inner_circle[2],
+            'end_y': image.shape[0]
+        },
+        'left': {
+            'start_x': 0,
+            'start_y': inner_circle[1] - inner_circle[2],
+            'end_x': inner_circle[0] - inner_circle[2],
+            'end_y': inner_circle[1] + inner_circle[2]
+        },
+        'right': {
+            'start_x': inner_circle[0] + inner_circle[2],
+            'start_y': inner_circle[1] - inner_circle[2],
+            'end_x': image.shape[1],
+            'end_y': inner_circle[0] + inner_circle[2]
+        },
+    }
+    
+    return dict_component_direction[direction]
+
+def corner_Detection(image, method='harris'):
+    if method == 'harris':
+        result = cv2.cornerHarris(image, blockSize=5, ksize=3, k=0.1)
+        
+    elif method == 'shi-tomasi':
+        corners1 = cv2.goodFeaturesToTrack(image, maxCorners=10, qualityLevel=0.1, minDistance=20, useHarrisDetector=True)
+        corners1 = np.int0(corners1)
+        
+        if len(image.shape) == 2:        
+            color_image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+        else:
+            color_image = image.copy()
+            
+        for i in corners1:
+            x,y = i.ravel()
+            cv2.circle(color_image, (x,y), 20, 255, -1)
+        result = color_image
+        
+    return result
+
+def calculation_Draw_Parameters_Of_Image_To_Focused_Interest_Area(coords=[0,0,0,0], direction='up'):
+    
+    # [start_X, start_Y, W, H]
+    
+    dict_component_direction = {
+        'up': {
+            'start_x': coords[0] + (coords[2] // 2),
+            'start_y': coords[1] + coords[3],
+            'end_x': coords[0] + (coords[2] // 2),
+            'end_y': coords[1]
+        },
+        'down': {
+            'start_x': coords[0] + (coords[2] // 2),
+            'start_y': coords[1],
+            'end_x': coords[0] + (coords[2] // 2),
+            'end_y': coords[1] + coords[3]
+        },
+        'left': {
+            'start_x': coords[0] + coords[2],
+            'start_y': coords[1] + (coords[3] // 2),
+            'end_x': coords[0],
+            'end_y': coords[1] + (coords[3] // 2)
+        },
+        'right': {
+            'start_x': coords[0],
+            'start_y': coords[1] + (coords[3] // 2),
+            'end_x': coords[0] + coords[2],
+            'end_y': coords[1] + (coords[3] // 2)
+        },
+    }
+    
+    return dict_component_direction[direction]
+
+def image_Add_Noise(symbol_image, noise_type='salt'):
+    if noise_type == 'salt':
+        row,col,ch= symbol_image.shape
+        s_vs_p = 0.5
+        amount = 0.004
+        noise = np.copy(symbol_image)
+        # Salt mode
+        num_salt = np.ceil(amount * symbol_image.size * s_vs_p)
+        coords = [np.random.randint(0, i - 1, int(num_salt))
+                for i in symbol_image.shape]
+        noise[coords] = 1
+
+        # Pepper mode
+        num_pepper = np.ceil(amount* symbol_image.size * (1. - s_vs_p))
+        coords = [np.random.randint(0, i - 1, int(num_pepper))
+                for i in symbol_image.shape]
+        noise[coords] = 0
+
+    elif noise_type == 'gauss':
+        row, col, ch= symbol_image.shape
+        mean = 0
+        var = 0.1
+        sigma = var**0.5
+        gauss = np.random.normal(mean,sigma,(row,col,ch))
+        gauss = gauss.reshape(row,col,ch)
+        noise = symbol_image + gauss
+            
+    return noise
+
+def image_Padding(image, pad_w, pad_h):
+    top = int( (pad_h // 2) - (image.shape[0] // 2) )
+    bottom = top
+    if top + bottom + image.shape[0] < pad_h:
+        bottom += 1
+    
+    left = int( (pad_w // 2) - (image.shape[1] // 2) )
+    right = left
+    if left + right + image.shape[1] < pad_w:
+        right += 1
+    
+    padded_image = cv2.copyMakeBorder(image, top, bottom, left, right, cv2.BORDER_CONSTANT, None, [0,0,0])
+    if (padded_image.shape[1] > pad_w) or (padded_image.shape[0] > pad_h):
+        padded_image = cv2.resize(padded_image, (int(pad_w), int(pad_h)))
+
+    return padded_image
+
+def average_Color(image, coords=(0,0), size=3):
+    x = coords[0]
+    y = coords[1]
+    half_size = size // 2
+    
+    x1, x2 = max(x - half_size, 0), min(x + half_size, image.shape[1])
+    y1, y2 = max(y - half_size, 0), min(y + half_size, image.shape[0])
+    
+    # lambda x1, x2, y1, y2: [i[0] if type(i) is np.ndarray else i for i in [x1, x2, y1, y2]]
+    
+    if type(x1) is np.ndarray:
+        x1 = x1[0]
+    if type(x2) is np.ndarray:
+        x2 = x2[0]
+    if type(y1) is np.ndarray:
+        y1 = y1[0]
+    if type(y2) is np.ndarray:
+        y2 = y2[0]
+    
+    # Ensure that the area is correctly handled at the edges of the image
+    if x1 < x2 and y1 < y2:
+        region = image[y1:y2, x1:x2]
+        average_bgr = np.mean(region, axis=(0, 1))
+        return tuple(map(int, average_bgr))
+    
+    else:
+        return (0, 0, 0)
+
+def detect_Color(R, G, B, color_table):
+    min_distance = float('inf')
+    cname = ''
+    for i in range(len(color_table)):
+        d = abs(R - int(color_table.loc[i, "R"])) + abs(G - int(color_table.loc[i, "G"])) + abs(B - int(color_table.loc[i, "B"]))
+        if d < min_distance:
+            min_distance = d
+            cname = color_table.loc[i, "color_name"]
+    return cname
+
+def line_Detection(edge_image, opening_image, org_image, resize_edge_image, resize_opening_image, resize_org_image, method='hough_lines', method_model=None, num_lines=4, object_color='white', pano_title='', flag_activate_debug_images=False):
+    
+    if method == 'hough_lines':
+        
+        img_height, img_width = edge_image.shape
+        if flag_activate_debug_images:
+            draw_opening_image = cv2.cvtColor(opening_image.copy(), cv2.COLOR_GRAY2BGR)
+            draw_org_image = org_image.copy()
+        
+        ###################################################
+        tested_angles = np.linspace(-np.pi/2, np.pi/2, 360, endpoint=False)
+        h, theta, d = hough_line(edge_image, theta=tested_angles)
+        hpeaks = hough_line_peaks(h, theta, d, threshold=0.3 * h.max())
+
+        counter = 0
+        list_hough_lines = []
+        list_angle = []
+        for _, angle, dist in zip(*hpeaks):
+            (x0, y0) = dist * np.array([np.cos(angle), np.sin(angle)])
+            # angle_radians = np.tan(angle + np.pi/2)
+            angle_curve = np.tan(angle + np.round(np.pi,3)/2)
+            list_hough_lines.append((x0,y0,angle_curve))
+            list_angle.append(angle)
+            
+            # stdo(1, "[{}][HL-{}] ({:.1f},{:.1f}) | angle:{:.1f} | dist:{}".format(pano_title, counter, x0, y0, angle_curve, dist))
+            counter += 1
+
+        list_hough_lines = filter_Close_Points(list_hough_lines)
+
+        lines_with_slope = [(x0, y0, angle) for x0, y0, angle in list_hough_lines]
+        ###################################################
+        
+        
+        ###################################################
+        list_hough_coords = []
+        for x0, y0, m in lines_with_slope:
+            b = y0 - m * x0  # Y kesme noktası
+            
+            # Görüntü sınırlarıyla kesişimleri bul
+            intersections = []
+
+            # Sol kenar (x=0)
+            y_at_x0 = b
+            if 0 <= y_at_x0 <= img_height:
+                intersections.append((0, y_at_x0))
+
+            # Sağ kenar (x=img_width)
+            y_at_xmax = m * img_width + b
+            if 0 <= y_at_xmax <= img_height:
+                intersections.append((img_width, y_at_xmax))
+
+            # Üst kenar (y=0)
+            x_at_y0 = -b / m if m != 0 else float('inf')
+            if 0 <= x_at_y0 <= img_width:
+                intersections.append((x_at_y0, 0))
+
+            # Alt kenar (y=img_height)
+            x_at_ymax = (img_height - b) / m if m != 0 else float('inf')
+            if 0 <= x_at_ymax <= img_width:
+                intersections.append((x_at_ymax, img_height))
+
+            # Eğer en az 2 kesişim noktası varsa, doğruyu çiz
+            if len(intersections) >= 2:
+                (x1, y1), (x2, y2) = intersections[:2]
+                list_hough_coords.append((round(x1),round(y1),round(x2),round(y2)))
+                
+                if flag_activate_debug_images:
+                    draw_Line(draw_opening_image, start_point=(round(x1),round(y1)), end_point=(round(x2),round(y2)), color=(0, 255, 0), thickness=7)
+        ###################################################
+        
+        
+        ###################################################
+        list_line_intersection_coords = []
+        # list_line_angles = []
+        counter = 0
+        # Tüm doğruları ikili olarak karşılaştır
+        for (x0_1, y0_1, m1), (x0_2, y0_2, m2) in itertools.combinations(lines_with_slope, 2):
+            # Eğer eğimler eşitse (m1 == m2), doğrular paraleldir ve kesişmez
+            if np.isclose(m1, m2):
+                continue
+
+            # Doğru denklemlerinin sabit terimleri (b) hesapla
+            b1 = y0_1 - m1 * x0_1
+            b2 = y0_2 - m2 * x0_2
+
+            # Kesişim noktası (x, y) hesapla
+            x_intersect = (b2 - b1) / (m1 - m2)
+            y_intersect = m1 * x_intersect + b1
+
+            if (0 <= x_intersect <= img_width) and (0 <= y_intersect <= img_height):
+                
+                list_line_intersection_coords.append((round(x_intersect), round(y_intersect)))
+                # list_line_angles.append(m1)
+
+                # stdo(1, "[{}][I-{}] ({:.1f},{:.1f})".format(pano_title, counter, x_intersect, y_intersect))
+                counter += 1
+                # ax.plot(x_intersect, y_intersect, 'go')
+                # draw_Circle(draw_opening_image, center_point=(round(x_intersect), round(y_intersect)), radius=20, color=(0, 0, 255), thickness=-1)
+
+        list_line_intersection_coords = filter_Close_Points_2(list_line_intersection_coords, distance_threshold=200)
+        ###################################################
+        
+        ###################################################
+        list_norm_line_intersection_coords = []
+        if len(list_line_intersection_coords) > 4:
+            positions = determine_Line_Position(list_line_intersection_coords, img_height, img_width)
+            positions = np.array(positions)
+            filtered_intersections = filter_Closest_Bottom_Points(positions)
+            counter = 0
+            for x, y, _ in filtered_intersections:
+                # stdo(1, "[{}][normI-{}] ({:.1f},{:.1f})".format(pano_title, counter, round(float(x)), round(float(y))))
+                if flag_activate_debug_images:
+                    draw_Circle(draw_opening_image, (round(float(x)),round(float(y))), radius=20, color=(0, 0, 255), thickness=-1)
+                list_norm_line_intersection_coords.append((round(float(x)),round(float(y))))
+                counter += 1
+                
+        elif len(list_line_intersection_coords) == 4:
+            counter = 0
+            for x, y in list_line_intersection_coords:
+                # stdo(1, "[{}][getI-{}] ({:.1f},{:.1f})".format(pano_title, counter, round(float(x)), round(float(y))))
+                if flag_activate_debug_images:
+                    draw_Circle(draw_opening_image, (round(float(x)),round(float(y))), radius=20, color=(0, 0, 255), thickness=-1)
+                list_norm_line_intersection_coords.append((round(float(x)),round(float(y))))
+                counter += 1
+
+        for id, lines in enumerate(list_hough_coords):
+            # lines = [i - 10 for i in lines]
+            if flag_activate_debug_images:
+                draw_Line(draw_org_image, start_point=(lines[0], lines[1]), end_point=(lines[2], lines[3]), color=(0, 255, 0), thickness=7)
+
+        list_line_intersection_coords_repadding = []
+        for id, coords in enumerate(list_norm_line_intersection_coords):
+            # coords = [i - 10 for i in coords]
+            if flag_activate_debug_images:
+                draw_Circle(draw_org_image, center_point=(coords[0], coords[1]), radius=20, color=(0, 0, 255), thickness=-1)
+            list_line_intersection_coords_repadding.append(coords)
+        ###################################################
+        
+        ###################################################
+        # if not flag_activate_debug_images:
+        #     draw_org_image = org_image.copy()
+        #     draw_opening_image = opening_image.copy()
+            
+        # d_image, pts, angle_rad_top, angle_rad_bottom = sort_points_for_warping(draw_org_image.copy(), list_line_intersection_coords_repadding, flag_activate_debug_images=flag_activate_debug_images)
+        # pts = np.float32(pts)
+        # tl = pts[0]
+        # tr = pts[1]
+        # bl = pts[2]
+        # br = pts[3]
+
+        # x_range = round(tr[0] - tl[0])
+        # y_range = round(bl[1] - tl[1])
+        # pts2 = np.float32([[0,0],[x_range,0],[0,y_range],[x_range,y_range]])
+
+        # M = cv2.getPerspectiveTransform(pts, pts2)
+        # warped_image = cv2.warpPerspective(org_image.copy(), M, (x_range,y_range))
+        #>>>>>> return draw_opening_image, draw_org_image, d_image, warped_image, rotated, org_rotated, org_points_rotated_image, pts, org_rotate_coords
+        
+        angle_rad_top, angle_rad_bottom = get_Angles_Of_Horizontal_Lines(list_line_intersection_coords_repadding)
+        
+        ###################################################
+        
+        ###################################################
+        if flag_activate_debug_images:
+            rotated = image_Rotate(draw_org_image, angle_rad=angle_rad_top)
+        org_rotated = image_Rotate(org_image.copy(), angle_rad=angle_rad_top)
+        ###################################################
+        
+        ###################################################
+        org_rotate_coords = np.array(list_line_intersection_coords_repadding).reshape(-1,2)
+        org_rotate_coords[:,0], org_rotate_coords[:,1] = coordinate_Scaling(
+            x=org_rotate_coords[:,0], 
+            y=org_rotate_coords[:,1],
+            old_w=False, old_h=False, 
+            new_w=org_image.shape[1], new_h=org_image.shape[0],
+            degree=angle_rad_top, 
+            task="ANGULAR_ROTATION", 
+            is_dual=False
+        )
+        
+        if flag_activate_debug_images:
+            org_points_rotated_image = org_rotated.copy()
+            for id, coords in enumerate(org_rotate_coords):
+                draw_Circle(org_points_rotated_image, center_point=(coords[0], coords[1]), radius=20, color=(0, 0, 255), thickness=-1)
+        
+        #>>>>>> return draw_opening_image, draw_org_image, d_image, warped_image, rotated, org_rotated, org_points_rotated_image, pts, org_rotate_coords
+        ###################################################
+        
+        if flag_activate_debug_images:
+            list_frame = [
+                org_image, draw_opening_image, draw_org_image, rotated, org_rotated, org_points_rotated_image,
+            ]
+            list_name = [
+                pano_title + '_0_org', 
+                pano_title + '_1_HoughLines', 
+                pano_title + '_2_Mask_HL_org', 
+                pano_title + '_3_Rotate', 
+                pano_title + '_4_Rotate_org', 
+                pano_title + '_5_Rotate_org_Points'
+            ]
+            save_image(list_frame, path="temp_files/Pano_Detection/hough_lines", filename=list_name, format="jpg")
+        
+        return org_rotated, org_rotate_coords
+
+    elif method == 'ransac':
+        
+        start_seq = time.time()
+        
+        start_def = time.time()
+        resize_edge_image = cv2.Canny(resize_opening_image, 50, 150)
+        img_height, img_width = resize_edge_image.shape
+        if flag_activate_debug_images:
+            draw_resize_opening_image = cv2.cvtColor(resize_opening_image.copy(), cv2.COLOR_GRAY2BGR)
+            draw_resize_org_image = resize_org_image.copy()
+        stop_def = time.time() - start_def
+        
+        ###################################################
+        start_ransac = time.time()
+        
+        y_coords, x_coords = np.nonzero(resize_edge_image)
+        points = np.column_stack((x_coords, y_coords))
+        
+        coords_org = []
+        for i in range(num_lines):
+            
+            try:
+                model, inliers = ransac(
+                    points,
+                    method_model,
+                    min_samples=2,
+                    residual_threshold=4,
+                    max_trials=500,
+                )
+            except:
+                org_rotated = org_image
+                org_rotate_coords = [(0,0), (0,org_image.shape[0]), (org_image.shape[1],org_image.shape[0]), (org_image.shape[1],0)]
+                angle_rad_top = 0
+                return org_rotated, org_rotate_coords, angle_rad_top
+            
+            point_on_line = model.params[0]
+            line_direction = model.params[1]  
+
+            if abs(line_direction[0]) < 1e-6:  
+                x_start = x_end = round(point_on_line[0])
+                x_start = max(0, min(img_width - 1, x_start))
+                y_start, y_end = 0, img_height  
+            else:
+                x_start, x_end = 0, img_width
+                y_start = int(point_on_line[1] + (x_start - point_on_line[0]) * (line_direction[1] / line_direction[0]))
+                y_end = int(point_on_line[1] + (x_end - point_on_line[0]) * (line_direction[1] / line_direction[0]))
+    
+            coords = [[x_start, y_start], [x_end, y_end]]
+            coords_org.append((coords))
+            
+            if flag_activate_debug_images:
+                draw_Line(draw_resize_opening_image, start_point=(x_start,y_start), end_point=(x_end,y_end), color=(0, 255, 0), thickness=5)
+    
+            points = points[~inliers]
+            
+        # stdo(1, "ransac-coords_org:{}".format(coords_org))
+        
+        stop_ransac = time.time() - start_ransac
+        ###################################################
+        
+        ###################################################
+        start_intersection = time.time()
+        
+        list_intersection = []
+        margin = 200
+        for x in range(4):
+            for y in range(x + 1, 4):
+                intersection = line_Intersection(coords_org[x], coords_org[y], method='4')
+                x_val, y_val = intersection
+                if (x_val, y_val) == (False, False):
+                    continue
+                if -margin <= x_val <= img_width + margin and -margin <= y_val <= img_height + margin:
+                    list_intersection.append((x_val, y_val))
+                    
+                    if flag_activate_debug_images:
+                        draw_Circle(draw_resize_org_image, center_point=(x_val, y_val), radius=20, color=(0, 0, 255), thickness=-1)
+        
+        if flag_activate_debug_images:
+            list_frame = [
+                resize_edge_image, draw_resize_opening_image, draw_resize_org_image
+            ]
+            list_name = [
+                pano_title + '_resize_edge_image', 
+                pano_title + '_draw_resize_opening_image', 
+                pano_title + '_draw_resize_org_image', 
+            ]
+            save_image(list_frame, path="temp_files/Pano_Detection/ransac", filename=list_name, format="jpg")
+        
+        # stdo(1, "ransac-list_intersection:{}".format(list_intersection))
+        
+        stop_intersection = time.time() - start_intersection
+        ###################################################
+        
+        ###################################################
+        start_angle = time.time()
+        angle_rad_top, angle_rad_bottom = get_Angles_Of_Horizontal_Lines(list_intersection)
+        stop_angle = time.time() - start_angle
+        ###################################################
+        
+        ###################################################
+        start_rotate = time.time()
+        
+        if object_color == 'white' or object_color == 'gray - siyah sembol' or object_color == 'gray - beyaz sembol':
+            border_value = (255,255,255)
+        elif object_color == 'black' or object_color == 'piano-black':
+            border_value = (0,0,0)
+        
+        if flag_activate_debug_images:
+            rotated = image_Rotate(draw_resize_org_image, angle_rad=angle_rad_top, border_value=border_value)
+        resize_org_rotated = image_Rotate(resize_org_image.copy(), angle_rad=angle_rad_top, border_value=border_value)
+        org_rotated = image_Rotate(org_image.copy(), angle_rad=angle_rad_top, border_value=border_value)
+        stop_rotate = time.time() - start_rotate
+        ###################################################
+        
+        ###################################################
+        start_coordinate_scale = time.time()
+        
+        resize_org_rotate_coords = np.array(list_intersection).reshape(-1,2)
+        resize_org_rotate_coords[:,0], resize_org_rotate_coords[:,1] = coordinate_Scaling(
+            x=resize_org_rotate_coords[:,0], 
+            y=resize_org_rotate_coords[:,1],
+            old_w=False, old_h=False, 
+            new_w=img_width, new_h=img_height,
+            degree=angle_rad_top, 
+            task="ANGULAR_ROTATION", 
+            is_dual=False
+        )
+        
+        org_rotate_coords = resize_org_rotate_coords.copy()
+        org_rotate_coords[:,0], org_rotate_coords[:,1] = coordinate_Scaling(
+            x=resize_org_rotate_coords[:,0], 
+            y=resize_org_rotate_coords[:,1],
+            old_w=img_width, old_h=img_height, 
+            new_w=org_image.shape[1], new_h=org_image.shape[0],
+            task="RESIZE", 
+            is_dual=False
+        )
+        
+        if flag_activate_debug_images:
+            resize_org_points_rotated_image = resize_org_rotated.copy()
+            org_points_rotated_image = org_rotated.copy()
+            for id, coords in enumerate(resize_org_rotate_coords):
+                draw_Circle(resize_org_points_rotated_image, center_point=(coords[0], coords[1]), radius=20, color=(0, 0, 255), thickness=-1)
+            for id, coords in enumerate(org_rotate_coords):
+                draw_Circle(org_points_rotated_image, center_point=(coords[0], coords[1]), radius=20, color=(0, 0, 255), thickness=-1)
+                
+        stop_coordinate_scale = time.time() - start_coordinate_scale
+        ###################################################
+        
+        if flag_activate_debug_images:
+            list_frame = [
+                resize_org_image, draw_resize_opening_image, draw_resize_org_image, rotated, resize_org_rotated, resize_org_points_rotated_image, org_points_rotated_image
+            ]
+            list_name = [
+                pano_title + '_0_resize_org', 
+                pano_title + '_1_Ransac_resize_opening', 
+                pano_title + '_2_Mask_Ransac_resize_org', 
+                pano_title + '_3_Rotate_draw_resize_org', 
+                pano_title + '_4_Rotate_resize_org', 
+                pano_title + '_5_Rotate_resize_org_Points',
+                pano_title + '_6_Rotate_org_Points'
+            ]
+            save_image(list_frame, path="temp_files/Pano_Detection/ransac", filename=list_name, format="jpg")
+        
+        stop_seq = time.time() - start_seq
+        
+        # stdo(1, "[{}] T:{:.2f} - def:{:.2f} - ransac:{:.2f} - intersection:{:.2f} - angle:{:.2f} - rotate:{:.2f} - cs:{:.2f}".format
+        #     (
+        #         "line_Detection",
+        #         stop_seq,
+        #         stop_def,
+        #         stop_ransac,
+        #         stop_intersection,
+        #         stop_angle,
+        #         stop_rotate,
+        #         stop_coordinate_scale
+        #     )
+        # )
+        
+        return org_rotated, org_rotate_coords, angle_rad_top
+        
+def fill_Image(image):
+    h, w = image.shape[:2]
+    mask = np.zeros((h+2, w+2), np.uint8)
+    fill = image.copy()
+    cv2.floodFill(fill, mask, (11,11), 255, cv2.FLOODFILL_FIXED_RANGE)
+    return fill
+
+def calculation_Crop_Parameters_Of_Image_Displacement(image, rotated_cords, pano_sector_index='R'):
+    
+    points = sorted(rotated_cords, key=lambda p: p[0])  # Sort by x coordinate
+    left_points = sorted(points[:2], key=lambda p: p[1])  # Top-bottom order
+    right_points = sorted(points[2:], key=lambda p: p[1])  # Top-bottom order
+    
+    # pts = [left_points[0], right_points[0], left_points[1], right_points[1]] # TL, TR, BL, BR
+    tl = left_points[0]
+    tr = right_points[0]
+    bl = left_points[1]
+    br = right_points[1]
+    
+    if pano_sector_index=="R":
+        left_range = max(tl[0], bl[0])
+        right_range = max(tr[0], br[0])
+        up_range = min(tl[1], bl[1])
+        down_range = max(tr[1], br[1])
+       
+        displacement_left_range = max(0, right_range - 4200) #3900
+        displacement_down_range = up_range + 2300
+        crop = image[ up_range+50:displacement_down_range, displacement_left_range:right_range-200 ]
+    
+    elif pano_sector_index=="L":
+        left_range = min(tl[0], bl[0])  
+        right_range = min(tr[0], br[0])
+        up_range = min(tl[1], bl[1])  
+        down_range = max(tr[1], br[1])
+ 
+        displacement_right_range = min(left_range + 4200, image.shape[1])
+        displacement_down_range = up_range + 2300
+        crop = image[ up_range+50:displacement_down_range, left_range+50:displacement_right_range ]
+    
+    elif pano_sector_index=="M":
+        left_range = min(tl[0], bl[0])  
+        right_range = min(tr[0], br[0])
+        up_range = min(tl[1], bl[1])  
+        down_range = max(tr[1], br[1])
+ 
+        displacement_right_range = left_range + 4000 
+        displacement_down_range = up_range + 2300
+        crop = image[ up_range+50:displacement_down_range, left_range+50:displacement_right_range ]
+    
+    return crop
+
+def get_Contours_and_Hull(image, canny_threshold=100):
+    """
+    Verilen görüntüden konturları ve konveks gövdeyi çıkarır.
+   
+    Parametreler:
+    - image: Giriş görüntüsü (numpy array, BGR veya Grayscale olabilir)
+    - canny_threshold: Canny edge detection eşiği (default: 100)
+   
+    Döndürür:
+    - contours: Bulunan tüm konturlar (list of numpy arrays)
+    - hull_list: Konveks gövdeler (list of numpy arrays)
+    """
+    # Eğer görüntü BGR ise griye çevir
+    if len(image.shape) == 3:
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+ 
+    # Gürültüyü azaltmak için bulanıklaştır
+    blurred = cv2.GaussianBlur(image, (5, 5), 0)
+ 
+    # Canny ile kenarları bul
+    canny_output = cv2.Canny(blurred, canny_threshold, canny_threshold * 2)
+ 
+    # Konturları bul
+    contours, _ = cv2.findContours(canny_output, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+ 
+    # Konveks gövdeleri bul
+    hull_list = [cv2.convexHull(c) for c in contours]
+ 
+    return contours, hull_list
+      
+def draw_Hulls_and_Bbox(image, contours, flag_activate_debug_images=False):
+    if not contours:
+        return image, None, None
+    
+    if flag_activate_debug_images:
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)  
+        max_area = 0
+        max_box = None
+        max_hull = None
+    
+    # Tüm konturları tek bir arrayde birleştir
+    all_points = np.vstack(contours)
+    # Birleştirilmiş konturların convex hull'unu hesapla
+    merged_hull = cv2.convexHull(all_points)
+    # Hull üzerinden minimum alanlı döndürülmüş dikdörtgeni al
+    rect = cv2.minAreaRect(merged_hull)
+    box = cv2.boxPoints(rect)
+    box = np.intp(box)
+    # Eğer istenirse köşeleri iyileştir
+    box = qualified_Edges(box) #[sol_üst, sol_alt, sağ_alt, sağ_üst]
+    
+    # for cnt in contours:
+    #     hull = cv2.convexHull(cnt)  
+    #     rect = cv2.minAreaRect(hull)  
+    #     box = cv2.boxPoints(rect)  
+    #     box = np.int0(box)  
+    #     area = cv2.contourArea(box)  
+ 
+    #     # En büyük alanlı hull'u seç
+    #     if area > max_area:
+    #         max_area = area
+    #         max_box = box  
+    #         max_box = qualified_Edges(max_box)
+    #         max_hull = hull
+           
+    # if max_hull is not None:
+    #     # _,cols = image.shape[:2]
+    #     # [vx,vy,x,y] = cv2.fitLine(cnt, cv2.DIST_L2,0,0.01,0.01)
+    #     # lefty = int((-x*vy/vx) + y)
+    #     # righty = int(((cols-x)*vy/vx)+y)
+    #     # cv2.line(image,(cols-1,righty),(0,lefty),(0,255,0),1)
+    #     cv2.drawContours(image, [max_hull], -1, (0, 255, 0), 2)  
+    #     cv2.drawContours(image, [max_box], -1, (255, 0, 255), 1)  
+    # return image, max_hull, max_box
+    
+    # Çizimleri yap
+    if flag_activate_debug_images:
+        cv2.drawContours(image, [merged_hull], -1, (0, 255, 0), 2)  # Yeşil: hull
+        cv2.drawContours(image, [box], -1, (255, 0, 255), 1)         # Mor: bbox
+
+    return image, merged_hull, box
+ 
+def qualified_Edges(obb_points):
+    """
+    Verilen küçük resim (image) ve OBB köşe noktaları (obb_points) ile
+    sol üst, sol alt, sağ alt, sağ üst şeklinde sıralar.
+   
+    Parametreler:
+        image: (numpy array) Küçük resim (height, width, channels)
+        obb_points: (numpy array) OBB köşe noktaları (4x2 matris)
+   
+    Dönüş:
+        (numpy array) Sol üst, sol alt, sağ alt, sağ üst sıralı köşe noktaları
+    """
+ 
+    # Resmin genişliği ve yüksekliği
+   
+   
+    # Ağırlık merkezi
+    merkez = np.mean(obb_points, axis=0)
+   
+    # Açılar hesaplanıyor
+    acilar = np.arctan2(obb_points[:, 1] - merkez[1], obb_points[:, 0] - merkez[0])
+   
+    # Açılara göre noktaları saat yönünde sırala
+    sirali_noktalar = obb_points[np.argsort(acilar)]
+   
+    # Sol grup ve sağ grup belirle
+    sol = sirali_noktalar[sirali_noktalar[:, 0] <= merkez[0]]
+    sag = sirali_noktalar[sirali_noktalar[:, 0] > merkez[0]]
+ 
+    # Sol üst ve sol alt ayrımı
+    sol_üst = min(sol, key=lambda p: p[1])
+    sol_alt = max(sol, key=lambda p: p[1])
+ 
+    # Sağ üst ve sağ alt ayrımı
+    sağ_alt = max(sag, key=lambda p: p[1])
+    sağ_üst = min(sag, key=lambda p: p[1])
+ 
+    return np.array([sol_üst, sol_alt, sağ_alt, sağ_üst])      
+
+def get_Bbox_Position_Into_Image(image, bbox_coords):
+    """
+    Verilen görüntüdeki OBB köşe noktalarına göre 
+    görüntünün solunda mı sağında mı olduğunu hesaplar.
+   
+    Parametreler:
+        image: (numpy array) Giriş görüntüsü (height, width, channels)
+        bbox_coords: (numpy array) OBB köşe noktaları (4x2 matris)
+   
+    Return: position 'left' ya da 'right'
+    """
+    
+    # Sol üst köşe
+    x_min = int(min(bbox_coords[:, 0]))
+    y_min = int(min(bbox_coords[:, 1]))
+    
+    # Sağ alt köşe
+    x_max = int(max(bbox_coords[:, 0]))
+    y_max = int(max(bbox_coords[:, 1]))
+    
+    # OBB'nin genişliği ve yüksekliği
+    width = x_max - x_min
+    height = y_max - y_min
+
+    # Görüntünün merkezi
+    image_center_x = image.shape[1] / 2
+
+    # BBox'ın merkezi (x)
+    bbox_center_x = bbox_coords[:, 0].mean()
+
+    # Sağ mı sol mu?
+    position = 'left' if bbox_center_x < image_center_x else 'right'
+    
+    return position
+
+def create_Mask(bbox_coords=[], image_shape=(1080,1920,3), is_line=False):
+    
+    h, w = image_shape[:2]
+    mask = np.zeros((h, w), np.uint8)
+    
+    if is_line:
+        line_start = bbox_coords[0]
+        line_stop = bbox_coords[1]
+        line_thickness = 10
+        return cv2.line(mask, line_start, line_stop, 255, line_thickness)
+    else:
+        array_bbox_coords = cv2.convexHull(np.array(bbox_coords))
+        return cv2.fillPoly(mask, [array_bbox_coords], 255)
+
+def sort_Bbox_Points(pts):
+    s = pts.sum(axis=1)
+    diff = np.diff(pts, axis=1)
+
+    top_left = pts[np.argmin(s)]
+    bottom_right = pts[np.argmax(s)]
+    top_right = pts[np.argmin(diff)]
+    bottom_left = pts[np.argmax(diff)]
+
+    return np.array([top_left, top_right, bottom_right, bottom_left])
+
+def get_Largest_Contour_Object(image):
+    contours, _ = cv2.findContours(image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    if contours:
+        largest_contour = max(contours, key=lambda cnt: cv2.boundingRect(cnt)[2] * cv2.boundingRect(cnt)[3])
+        mask = np.zeros_like(image)
+        cv2.drawContours(mask, [largest_contour], -1, 255, thickness=cv2.FILLED)
+        eliminate_image = cv2.bitwise_and(image, mask)
+    else:
+        eliminate_image = image.copy()
+    return eliminate_image
+    
+def diff_Image_Masking(org_image=None, diff_image=None, edge_image_sample=None, edge_image_ref=None):
+    
+    # 4. Renkli çıktı görüntüsü hazırla
+    output = org_image.copy()
+    
+    # 5. diff_mask’teki beyaz piksellerin koordinatlarını al
+    ys, xs = np.where(diff_image == 255)
+    
+    # 6. Her piksel edge’in içinde mi değil mi kontrol et
+    list_inside = []
+    list_outside = []
+    
+    for x, y in zip(xs, ys):
+        if edge_image_sample[y, x] == 255:
+            # output[y, x] = (0, 255, 0)  
+            output[edge_image_sample == 255] = (255, 0, 0)
+            list_inside.append([x,y])
+        else:
+            output[y, x] = (0, 0, 255)
+            output[edge_image_sample == 255] = (255, 0, 0)
+            list_outside.append([x,y])
+        # if edge_image_ref[y, x] != 255:
+        #     output[y, x] = (255, 0, 0) 
+            
+    return output, list_inside, list_outside
+
+def edge_Image_Masking(diff_image=None, edge_image_sample=None):
+    
+    mask = np.zeros_like(diff_image)
+    
+    ys, xs = np.where(diff_image == 255)
+    
+    for x, y in zip(xs, ys):
+        if edge_image_sample[y, x] != 255:
+            mask[y, x] = 255  # Mark outside pixel in mask
+            
+    return mask
+
+def get_Thickness_With_Distance_Transform(image, contours):
+    
+    list_thickness = []
+    
+    for cnt in contours:
+
+        mask = np.zeros_like(image)
+        cv2.drawContours(mask, [cnt], -1, color=255, thickness=-1)
+        dist_transform = cv2.distanceTransform(mask, distanceType=cv2.DIST_L2, maskSize=5)
+        max_thickness = dist_transform.max() * 2
+        list_thickness.append(max_thickness)
+    
+    return list_thickness
+
+def remove_Pixel_With_Distance_Transform(image, contours, thin_threshold=2):
+    
+    filtered_image = image.copy()
+    list_cnt = []
+    list_max_thickness = []
+    
+    for cnt in contours:
+
+        mask = np.zeros_like(image)
+        cv2.drawContours(mask, [cnt], -1, color=255, thickness=-1)
+        dist_transform = cv2.distanceTransform(mask, distanceType=cv2.DIST_L2, maskSize=3)
+        max_thickness = dist_transform.max() * 2 
+        list_max_thickness.append(round(max_thickness, 2))
+        
+        if max_thickness <= thin_threshold:
+            list_cnt.append(cnt)
+        
+    cv2.drawContours(filtered_image, list_cnt, -1, 0, thickness=cv2.FILLED)
+        
+    return filtered_image, list_max_thickness
+
+def nearest_Edge(x, y, img_w, img_h):
+    distances = {
+        "left": x,
+        "right": img_w - x,
+        "top": y,
+        "bottom": img_h - y
+    }
+    return min(distances, key=distances.get)
+
+def draw_Arrows_With_Labels(image, coords, pad_top, pad_bottom, pad_left, pad_right, labels=[]):
+    img_h, img_w = image.shape[:2]
+    font = cv2.FONT_HERSHEY_SIMPLEX
+
+    # Orijinal resim boyutunu padding düşülmüş şekilde hesapla
+    orig_w = img_w - (pad_left + pad_right)
+    orig_h = img_h - (pad_top + pad_bottom)
+
+    for (x, y), label in zip(coords, labels):
+        # Orijinal koordinatlar (padding çıkarılmış)
+        orig_x = x - pad_left
+        orig_y = y - pad_top
+
+        direction = nearest_Edge(orig_x, orig_y, orig_w, orig_h)
+
+        # Hedef noktayı kenara göre belirle
+        if direction == "left":
+            start = (x-5, y)
+            target = (pad_left-15, y)
+            text_pos = (target[0]-38, y+5)
+        elif direction == "right":
+            start = (x+5, y)
+            target = (img_w-pad_right+10, y)
+            text_pos = (target[0] + 3, y+5)
+        elif direction == "top":
+            start = (x, y-8)
+            target = (x, pad_top-10)
+            text_pos = (x-15, target[1]-5)
+        else:  # bottom
+            start = (x, y+5)
+            target = (x, img_h-pad_bottom+10)
+            text_pos = (x-15, target[1]+15)
+
+        cv2.arrowedLine(image, start, target, (0, 255, 0), 1, tipLength=0.3)
+
+        label_ratio_mm = label * 0.0494 # (83px -> 4,10mm | 1px -> 0.0494mm | 1mm -> 20.244px) mm to px # Edit 21.07.2025
+        label_ratio_mm = f"{label_ratio_mm:.2f}"
+        cv2.putText(image, label_ratio_mm, text_pos, font, 0.5, (255,255,255), 1, cv2.LINE_AA)
+
+    return image
 
 if __name__ == "__main__":
     for function in [f for f in vars(hashlib).values() if inspect.isfunction(f)]:

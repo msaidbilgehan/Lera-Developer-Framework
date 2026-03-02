@@ -12,11 +12,11 @@ import logging
 ### ### ### ### ## ## ## ### ### ###
 
 from stdo import stdo
+from image_tools import save_image, open_image
 from structure_ui import Structure_UI, init_and_run_UI
 from structure_camera import Camera_Object, CAMERA_FLAGS
 from structure_data import Structure_Buffer
-from image_tools import save_image, open_image
-
+from image_manipulation import image_Flip, image_Rotate
 
 ### ### ### ### ### ## ## ## ### ### ### ### ###
 ### ### ### CAMERA UI CONFIGURATIONS ### ### ###
@@ -36,15 +36,15 @@ class Structure_Ui_Camera(Structure_UI):
         self.mouse_Positions = dict()
 
         ### ### ### ### ###
-        ### Constractor ###
+        ### Constructor ###
         ### ### ### ### ###
-        
+
         self.logger_level = logger_level
 
         ### ### ### ### ###
         ### ### ### ### ###
         ### ### ### ### ###
-        
+
         self.camera_Instance = None
         self.__buffer_Stream = Structure_Buffer(max_limit=1)
 
@@ -52,7 +52,7 @@ class Structure_Ui_Camera(Structure_UI):
     ### CAMERA APIs ###
     ### ### ### ### ###
 
-    def connect_to_Camera(self, camera_flag, camera_index, buffer_size=10, exposure_time=40000, auto_configure=True):
+    def connect_to_Camera(self, camera_flag, camera_index, buffer_size=10, exposure_time=40000, auto_configure=True, acquisition_framerate=30):
         #print(f"{camera_flag}, {buffer_size}, {exposure_time}")
         #print("self.is_Camera_Instance_Exist()", self.is_Camera_Instance_Exist())
         if self.is_Camera_Instance_Exist():
@@ -61,7 +61,8 @@ class Structure_Ui_Camera(Structure_UI):
                 camera_flag,
                 camera_index,
                 buffer_size,
-                exposure_time
+                exposure_time,
+                acquisition_framerate
             )
 
         else:
@@ -70,7 +71,8 @@ class Structure_Ui_Camera(Structure_UI):
                 camera_index,
                 buffer_size=buffer_size,
                 exposure_time=exposure_time,
-                auto_configure=auto_configure
+                auto_configure=auto_configure,
+                acquisition_framerate=acquisition_framerate
             )
 
             if self.is_Camera_Instance_Exist():
@@ -84,15 +86,16 @@ class Structure_Ui_Camera(Structure_UI):
                 self.camera_Instance.buffer_Connector(self.__buffer_Stream)
                 self.stream_Switch(True)
 
-    def get_Camera(self, camera_flag=CAMERA_FLAGS.CV2, camera_index=0, buffer_size=10, exposure_time=40000, auto_configure=True):
+    def get_Camera(self, camera_flag=CAMERA_FLAGS.CV2, camera_index=0, buffer_size=10, exposure_time=40000, auto_configure=True, acquisition_framerate=30):
         return Camera_Object(
             camera_flag=camera_flag,
             index_device=camera_index,
             auto_configure=auto_configure,
+            # extra_params=[700],  # cv2.CAP_DSHOW == 700
             trigger_quit=self.is_Quit_App,
             trigger_pause=self.is_Stream_Active,
             lock_until_done=False,
-            acquisition_framerate=30,
+            acquisition_framerate=acquisition_framerate,
             exposure_time=exposure_time,
             max_buffer_limit=buffer_size,
             logger_level=self.logger_level
@@ -137,17 +140,35 @@ class Structure_Ui_Camera(Structure_UI):
             self.exposure_Time
         )
 
+    def get_Camera_Exposure(self):
+        return self.exposure_Time
+
     ### ### ### ### ###
     ### ### ### ### ###
     ### ### ### ### ###
-    
+
+    ### ### ### ### ###
+    ### BUFFER APIs ###
+    ### ### ### ### ###
+
+    def api_Get_Buffered_Image(self, index=-1):
+        return self.__buffer_Stream.get_API(index) # if len(self.__buffer_Stream) > index else None
+
+    def api_Append_Image_To_Buffer(self, data):
+        # if len(self.__buffer_Stream) > index else None
+        return self.__buffer_Stream.append(data)
+
+    ### ### ## ### ###
+    ### ### ## ### ###
+    ### ### ## ### ###
+
     ### ### ## ### ###
     ### IMAGE APIs ###
     ### ### ## ### ###
-    
+
     def save_Image_Action(self, img, path=None, filename=[], format="png"):
         save_image(img, path=path, filename=filename, format=format)
-        
+
     def load_Image_Action(self, path=None, format="png"):
         if path:
             self.__buffer_Stream.append(
@@ -156,22 +177,19 @@ class Structure_Ui_Camera(Structure_UI):
             return self.__buffer_Stream.get_Last()
         else:
             return None
-    
-    ### ### ## ### ###
-    ### ### ## ### ###
-    ### ### ## ### ###
-    
-    ### ### ### ### ###
-    ### BUFFER APIs ###
-    ### ### ### ### ###
-    
-    def api_Get_Buffered_Image(self, index=-1):
-        return self.__buffer_Stream.get_API(index) # if len(self.__buffer_Stream) > index else None
-    
-    def api_Append_Image_To_Buffer(self, data):
-        # if len(self.__buffer_Stream) > index else None
-        return self.__buffer_Stream.append(data)
-    
+
+    def flip_Image_Action(self, img, task='horizontaly'):
+        self.__buffer_Stream.append(
+            image_Flip(img, task)
+        )
+        return self.__buffer_Stream.get_Last()
+
+    def rotate_Image_Action(self, img):
+        self.__buffer_Stream.append(
+            image_Rotate(img)
+        )
+        return self.__buffer_Stream.get_Last()
+
     ### ### ## ### ###
     ### ### ## ### ###
     ### ### ## ### ###
@@ -182,15 +200,15 @@ class Structure_Ui_Camera(Structure_UI):
 
 if __name__ == "__main__":
     import sys
-    
+
     # title, Class_UI, run=True, UI_File_Path= "test.ui", qss_File_Path = ""
     stdo(1, "Running {}...".format(__name__))
-    
+
     app, ui = init_and_run_UI(
         title="Camera Developer UI",
         Class_UI = Structure_Ui_Camera,
         UI_File_Path = "" if len(sys.argv) < 2 else sys.argv[1],
-        run=True, 
-        show_UI=True, 
+        run=True,
+        show_UI=True,
         is_Maximized=False
     )

@@ -38,7 +38,7 @@ class Data_Collector():
         
         self.buffer_data_list = Structure_Buffer(max_limit=max_buffer_limit)
         self.time = get_time(level=3)
-        self.path = dataset_collection_path + "/" + self.time
+        self.path = dataset_collection_path # + "/" + self.time
 
         self.initialize(
             trigger_quit=trigger_quit,
@@ -61,7 +61,7 @@ class Data_Collector():
             name="thread_dataset_collector",
             delay=0.01,
             logger_level=logger_level,
-            set_Deamon=True,
+            set_Daemon=True,
             run_number=None,
             quit_trigger=trigger_quit
         )
@@ -127,7 +127,7 @@ class Data_Collector():
     def write_buffer_to_local(self):
         full_path, name, frame = self.buffer_element_parser(self.path, self.buffer_data_list.pop(0))
 
-        save_image(frame, path=full_path, filename=[name], format="png")
+        save_image(frame, path=full_path, filename=[name], format="jpg")
 
 
     @staticmethod
@@ -142,7 +142,8 @@ class Data_Collector():
         """
         name, id, sector, bg_color, frame, status = element
 
-        full_path = path + "/" + str(bg_color) + "_" + str(id) + "/" + str(sector) + "/" + str(status)
+        # full_path = path + "/" + str(bg_color) + "_" + str(id) + "/" + str(sector) + "/" + str(status) # for-pano
+        full_path = path + "/" + str(sector) + "/" + str(bg_color) + "/" + str(id) + "/" + str(status)
 
         return full_path, name, frame
 

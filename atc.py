@@ -1,9 +1,5 @@
-#cython: language_level=3, boundscheck=False
 import os
-import sys
-import libs
 import psutil
-from os.path import expanduser
 
 """
 home = expanduser("~")
@@ -30,5 +26,5 @@ if __name__=="__main__":
     if counter >= 1:
         print("Program already running...")
     else:
-        #os.system('cd ' + home + '/Desktop/lazer-baski-sonrasi-panolarin-goruntu-kontrolu/' + '&& python3 ' + 'pano-inspection_run.py')
+        # os.system('cd ' + home + '/Desktop/lazer-baski-sonrasi-panolarin-goruntu-kontrolu/' + '&& python3 ' + 'pano-inspection_run.py')
         os.system('python3 ' + 'pano-inspection_run.py')

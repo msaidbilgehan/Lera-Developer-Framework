@@ -223,14 +223,14 @@ class Structure_Buffer():
         return self.get_API(0)
 
     def get_Bulk(self, start=0, end=0):
-        return_responce = None
+        return_response = None
         if 0 < len(self.__buffer) and start < len(self.__buffer) and start > -1 and end > -1 and end < len(self.__buffer):
             if start == 0 and end == 0:
-                return_responce = self.__buffer[:] 
+                return_response = self.__buffer[:] 
             else:
-                return_responce = self.__buffer[start:end]
-        # print(f"bulk_buffer ({len(self.__buffer)}={start, end}): {return_responce}")
-        return return_responce
+                return_response = self.__buffer[start:end]
+        # print(f"bulk_buffer ({len(self.__buffer)}={start, end}): {return_response}")
+        return return_response
 
     '''
     This code is removing the first element of the list and returning it.

@@ -11,29 +11,34 @@ import logging
 from time import sleep
 import sys
 from enum import Enum
+# import time
 
-### ### ### ### ## ### ###
-### EXTERNAL LIBRARIES ###
-### ### ### ### ## ### ###
-from PyQt5 import uic #, QtWidgets
-from PyQt5.QtGui import QStandardItemModel, QPen, QBrush, QColor, QCloseEvent, QTransform  # , QImage, QPixmap,
+# ## ### ### ### ## ### ###
+# ## EXTERNAL LIBRARIES ###
+# ## ### ### ### ## ### ###
+from PyQt5 import uic  # , QtWidgets
+from PyQt5.QtGui import QStandardItemModel, QPen, QBrush, QColor, QCloseEvent, QTransform, QIcon, QPainter, QPixmap  # , QImage, QPixmap,
 
 # QPixmap Conversation is giving QImage parameter type error
 # from PyQt5.QtGui import QPixmap
 # , QObject, QRect, QSize
 from PyQt5.QtCore import Qt, QPoint, QRectF, QPointF, QCoreApplication
 from PyQt5.QtWidgets import QGraphicsPixmapItem, QGraphicsRectItem, QGraphicsItem, QMainWindow, QApplication, QGraphicsScene, QGraphicsView, QMessageBox, QFileDialog #, QGraphicsPixmapItem, QMdiSubWindow
+# from PyQt5.QtCore import QMutex
 
-### ### ### ### ## ### ###
-### ### ### ### ## ### ###
-### ### ### ### ## ### ###
+# ## ### ### ### ## ### ###
+# ## ### ### ### ## ### ###
+# ## ### ### ### ## ### ###
 
 import libs
-from tools import list_files #, time_log
+from tools import list_files  # , time_log
 from math_tools import coordinate_Scaling
 from stdo import stdo
 from structure_data import Structure_Buffer
-from qt_tools import QT_Scene_Set_Item, QT_Scene_Add_Item, numpy_To_QT_Type_Converter, qtimer_Create_And_Run, qtimer_All_Stop, lcdNumber_Set, get_Color, QT_Scene_Set_Item_Background, QT_Scene_Set_Item_To_Index, QT_Scene_Add_Item_To_Index, QT_Scene_Add_Item_To_Foreground
+from qt_tools import QT_Scene_Set_Item, numpy_To_QT_Type_Converter, qt_Type_To_Numpy_Converter, numpy_To_QPixmap, qtimer_Create_And_Run, qtimer_All_Stop, get_Color, QT_Scene_Set_Item_Background, QT_Scene_Add_Item_To_Index, QT_Scene_Add_Item_To_Foreground  # , QT_Scene_Clear_All
+from image_tools import save_image, open_image
+from image_manipulation import draw_Line
+
 
 class QT_MESSAGEBOX_FLAGS(Enum):
     INFORMATION = 0
@@ -44,40 +49,169 @@ class QT_MESSAGEBOX_FLAGS(Enum):
     ABOUT_QT = 5
     WARNING_OK = 6
 
-### ### ### ### ### ## ## ## ### ### ### ### ###
-### ### ### UI OBJECT CONFIGURATIONS ### ### ###
-### ### ### ### ### ## ## ## ### ### ### ### ###
+# ## ### ### ### ### ## ## ## ### ### ### ### ###
+# ## ### ### UI OBJECT CONFIGURATIONS ### ### ###
+# ## ### ### ### ### ## ## ## ### ### ### ### ###
+
+"""
+class QGraphics_Scene(QGraphicsScene):
+    def __init__(self, *args, parent=None, is_Fixed=True, obj=None, **kwargs):
+        super(QGraphics_Scene, self).__init__(*args, **kwargs)
+        self.__mutex_of_scene = QMutex()
+
+    def addEllipse(self, rect[, pen=QPen()[, brush=QBrush()]]):
+        pass
+
+    def addEllipse(self, x, y, w, h[, pen=QPen()[, brush=QBrush()]]):
+        pass
+
+    def addItem(self, item):
+        pass
+
+    def addLine(self, line[, pen=QPen()]):
+        pass
+
+    def addLine(self, x1, y1, x2, y2[, pen=QPen()]):
+        pass
+
+    def addPath(self, path[, pen=QPen()[, brush=QBrush()]]):
+        pass
+
+    def addPixmap(self, pixmap):
+        pass
+
+    def addPolygon(self, polygon[, pen=QPen()[, brush=QBrush()]]):
+        pass
+
+    def addRect(self, rect[, pen=QPen()[, brush=QBrush()]]):
+        pass
+
+    def addRect(self, x, y, w, h[, pen=QPen()[, brush=QBrush()]]):
+        pass
+
+    def addSimpleText(self, text[, font=QFont()]):
+        pass
+
+    def addText(self, text[, font=QFont()]):
+        pass
+
+    def addWidget(self, widget[, wFlags=Qt.WindowFlags()]):
+        pass
+
+    def createItemGroup(self, items):
+        pass
+
+    def destroyItemGroup(self, group):
+        pass
+
+    def removeItem(self, item):
+        pass
+
+    def sendEvent(self, item, event):
+        pass
+
+    def setActivePanel(self, item):
+        pass
+
+    def setActiveWindow(self, widget):
+        pass
+
+    def setBackgroundBrush(self, brush):
+        pass
+
+    def setBspTreeDepth(self, depth):
+        pass
+
+    def setFocus(self, [focusReason=Qt.OtherFocusReason]):
+        pass
+
+    def setFocusItem(self, item[, focusReason=Qt.OtherFocusReason]):
+        pass
+
+    def setFocusOnTouch(self, enabled):
+        pass
+
+    def setFont(self, font):
+        pass
+
+    def setForegroundBrush(self, brush):
+        pass
+
+    def setItemIndexMethod(self, method):
+        pass
+
+    def setMinimumRenderSize(self, minSize):
+        pass
+
+    def setPalette(self, palette):
+        pass
+
+    def setSceneRect(self, rect):
+        pass
+
+    def setSceneRect(self, x, y, w, h):
+        pass
+
+    def setSelectionArea(self, path, deviceTransform):
+        pass
+
+    def setSelectionArea(self, path, selectionOperation[, mode=Qt.IntersectsItemShape[, deviceTransform=QTransform()]]):
+        pass
+
+    def setSelectionArea(self, path[, mode=Qt.IntersectsItemShape[, deviceTransform=QTransform()]]):
+        pass
+
+    def setSortCacheEnabled(self, enabled):
+        pass
+
+    def setStickyFocus(self, enabled):
+        pass
+
+    def setStyle(self, style):
+        pass
+
+    def update(self, x, y, w, h):
+        pass
+
+    def update (self, [rect=QRectF()]):
+        pass
+
+    def clear (self):
+        pass
+"""
+
 
 
 class Graphics_View(QGraphicsView):
     def __init__(self, *args, parent=None, is_Fixed=True, obj=None, **kwargs):
         super(Graphics_View, self).__init__(*args, **kwargs)
-
         self.is_focus_to_image = False
         self.is_drawing_now = False
         self.current_Frame = None
-        self.qtimer_render = None
+        self.qtimer_Render = None
+        self.qtimer_Items_Render = None
         self.background_image = None
         self.background_image_qt = None
         self.last_drawn_item = None
-        self.scene_items = list() 
-        
-        ######################
+        self.items_buffer = list()
+        self.is_All_Clear = True
+
+        # #####################
         # Set Configurations #
-        ######################
-        
+        # #####################
+
         self.setScene(QGraphicsScene(parent=parent))
-        
-        ######################
-        ######################
-        ######################
-        
-        ####################
+
+        # #####################
+        # #####################
+        # #####################
+
+        # ###################
         # Set Event Buffer #
-        ####################
-        
-        self.mouse_Events = dict() 
-          
+        # ###################
+
+        self.mouse_Events = dict()
+
         # Mouse Move
         self.mouse_Events["mouseMove"] = False
         self.mouse_Events["mouseMove_position"] = None
@@ -90,38 +224,38 @@ class Graphics_View(QGraphicsView):
         self.mouse_Events["mouseRelease_position"] = None
         self.mouse_Events["mouseRelease_position_scene"] = None
         self.mouse_Events["mouseRelease_current_item"] = None
-    
+
         # Mouse Click
         self.mouse_Events["mouseClick"] = False
         self.mouse_Events["mouseClick_button"] = None
         self.mouse_Events["mouseClick_position"] = None
         self.mouse_Events["mouseClick_position_scene"] = None
         self.mouse_Events["mouseClick_current_item"] = None
-        
+
         # Mouse Double Click
         self.mouse_Events["mouseDoubleClick"] = False
         self.mouse_Events["mouseDoubleClick_button"] = None
         self.mouse_Events["mouseDoubleClick_position"] = None
         self.mouse_Events["mouseDoubleClick_position_scene"] = None
         self.mouse_Events["mouseDoubleClick_current_item"] = None
-        
-    ####################
-    ####################
-    ####################
-        
+
+    # ###################
+    # ###################
+    # ###################
+
     def set_Scene(self, parent=None, scene=None):
         self.setScene(QGraphicsScene(parent=parent) if scene is None else scene)
 
     def is_mouseEvent(self, event, bool=None):
         if bool is not None:
-            self.mouse_Events[event] = bool 
+            self.mouse_Events[event] = bool
         return self.mouse_Events[event]
-    
+
     def is_Drawing_Now(self, bool=None):
         if bool is not None:
-            self.is_drawing_now = bool 
+            self.is_drawing_now = bool
         return self.is_drawing_now
-    
+
     def mouseMoveEvent(self, event):
 
         # CURRENT POSITION
@@ -133,6 +267,8 @@ class Graphics_View(QGraphicsView):
             self.mouse_Events["mouseMove_position"]
         )
 
+        # stdo(1, "LERA - mouseMoveEvent: (x:{}, y:{})".format(self.mouse_Events["mouseMove_position_scene"].x(), self.mouse_Events["mouseMove_position_scene"].y()))
+
         # CURRENT ITEM
         self.mouse_Events["mouseMove_current_item"] = self.scene().itemAt(
             self.mouse_Events["mouseMove_position_scene"], QTransform()
@@ -140,7 +276,7 @@ class Graphics_View(QGraphicsView):
 
         # if self.is_active_focus_to_image():
         #     self.focus_to_image()
-            
+
         self.connector_mouseMoveEvent()
 
     def connector_mouseMoveEvent(self):
@@ -151,7 +287,7 @@ class Graphics_View(QGraphicsView):
         self.mouse_Events["mouseRelease_button"] = event.buttons()
         self.mouse_Events["mouseRelease"] = True
         # print("mouseRelease", True)
-        
+
         # CURRENT POSITION
         self.mouse_Events["mouseRelease_position"] = self.mouse_Events["mouseMove_position"]
         self.mouse_Events["mouseRelease_position_scene"] = self.mouse_Events["mouseMove_position_scene"]
@@ -163,7 +299,7 @@ class Graphics_View(QGraphicsView):
 
     def connector_mouseReleaseEvent(self, set_Params):
         pass
-    
+
     def mouseClickEvent(self, event):
         # CURRENT BUTTON
         self.mouse_Events["mouseClick_button"] = event.buttons()
@@ -181,21 +317,23 @@ class Graphics_View(QGraphicsView):
 
     def connector_mouseClickEvent(self, set_Params):
         pass
-    
+
     def mouseDoubleClickEvent(self, event):
         # CURRENT BUTTON
         self.mouse_Events["mouseDoubleClick_button"] = event.buttons()
         self.mouse_Events["mouseDoubleClick"] = True
         # print("mouseDouble", True)
-        
+
         # CURRENT POSITION
         self.mouse_Events["mouseDoubleClick_position"] = self.mouse_Events["mouseMove_position"]
         self.mouse_Events["mouseDoubleClick_position_scene"] = self.mouse_Events["mouseMove_position_scene"]
-        
+
         # CURRENT ITEM
         self.mouse_Events["mouseDoubleClick_current_item"] = self.scene().itemAt(
             self.mouse_Events["mouseDoubleClick_position_scene"], QTransform()
         ) if self.mouse_Events["mouseDoubleClick_position_scene"] is not None else None
+
+        # stdo(1, "LERA - mouseDoubleClickEvent: (x:{}, y:{})".format(self.mouse_Events["mouseDoubleClick_position_scene"].x(), self.mouse_Events["mouseDoubleClick_position_scene"].y()))
 
     def connector_mouseDoubleClickEvent(self, set_Params):
         pass
@@ -268,46 +406,68 @@ class Graphics_View(QGraphicsView):
             self.doubleClick_scene_current_item.grabMouse()
         """
 
-    def set_Background_Image(self, numpy_image, width_padding=0, height_padding=0):
+    def set_Background_Image(self, numpy_image, width_padding=0, height_padding=0, clear_cache=False, id=0):
         if numpy_image is not None:
             # numpy_To_QT_Type_Converter(image, QType=QPixmap, keep_aspect_ratio=True, convert_bgr_to_rgb=True, width=None, height=None, cv2_resize_algorithm=None):
-            self.background_image = numpy_image
+
+            if clear_cache:
+                self.background_image = None
+
+            # start_convert = time.time()
             qt_image = numpy_To_QT_Type_Converter(
                 image=numpy_image,
                 width=self.width() - width_padding,
-                height=self.height() - height_padding
+                height=self.height() - height_padding,
+                # convert_bgr_to_rgb = False
             )
-            self.background_image_qt = qt_image
-            
+            # stop_convert = time.time() - start_convert
+
             # QT_Scene_Set_Item_To_Index(
             #     self.scene(),
-            #     qt_image,
+            #     self.background_image_qt,
             #     -1
             # )
+            # start_sib = time.time()
             QT_Scene_Set_Item_Background(
                 self.scene(),
-                qt_image
+                self.background_image_qt
             )
-            
-            self.scene().setSceneRect(
-                # QRect(10, 30, 161, 31)
-                0, 0,
-                qt_image.width(),
-                qt_image.height()
-            )
-            
+            # stop_sib = time.time() - start_sib
+
+            self.background_image = numpy_image
+            self.background_image_qt = qt_image
+
+            # start_r = time.time()
+            if (
+                self.scene().sceneRect().width() != self.background_image_qt.width() or
+                self.scene().sceneRect().height() != self.background_image_qt.height()
+            ):
+                self.scene().setSceneRect(
+                    # QRect(10, 30, 161, 31)
+                    0, 0,
+                    self.background_image_qt.width(),
+                    self.background_image_qt.height()
+                )
+            # stop_r = time.time() - start_r
+
+            # start_focus = time.time()
             if self.is_active_focus_to_image():
                 self.focus_to_image()
-            
+            # stop_focus = time.time() - start_focus
+
+            # start_update = time.time()
             self.scene().update()
-    
+            # stop_update = time.time() - start_update
+
+            # stdo(1, "set_Background_Image: [{}] C:{:.2f} | SIB:{:.2f} | R:{:.2f} | F:{:.2f} | U:{:.2f}".format(id, stop_convert, stop_sib, stop_r, stop_focus, stop_update))
+
     def clear_Scene_Foreground(self):
         if self.background_image_qt is not None:
             QT_Scene_Set_Item(
                 self.scene(),
                 self.background_image_qt
             )
-                
+
             self.scene().setSceneRect(
                 # QRect(10, 30, 161, 31)
                 0, 0,
@@ -315,7 +475,15 @@ class Graphics_View(QGraphicsView):
                 self.background_image_qt.height()
             )
             self.scene().update()
-    
+
+    def clear_All(self):
+        self.clear_Last_Drawn_Item()
+        # self.scene().update()
+        # QT_Scene_Clear_All(self.scene())
+        # self.scene().update()
+        self.scene().clear()
+        self.is_All_Clear = True
+
     def update_Scene_Size(self, width_padding=0, height_padding=0):
         qt_image = numpy_To_QT_Type_Converter(
             image=self.background_image,
@@ -335,10 +503,10 @@ class Graphics_View(QGraphicsView):
             qt_image.height()
         )
         self.scene().update()
-    
+
     def get_Background_Item(self):
         return self.get_Item()
-            
+
     def get_Item(self, index=0):
         background_item = self.scene().items(
             order=Qt.SortOrder.AscendingOrder
@@ -347,7 +515,21 @@ class Graphics_View(QGraphicsView):
         #     if len(background_item) else None
         return background_item[index] \
             if len(background_item) >= index + 1 else None
-    
+
+    def get_Items(self, pass_QGraphicsPixmapItem=False):
+        all_item_list = self.scene().items(
+            order=Qt.SortOrder.AscendingOrder
+        )
+        item_list = list()
+        if pass_QGraphicsPixmapItem:
+            for item in all_item_list:
+                if type(item) is not QGraphicsPixmapItem:
+                    # print("type(item)", type(item))
+                    item_list.append(item)
+        else:
+            item_list = all_item_list
+        return item_list
+
     def coordinate_Scaling_From_Scene(self, x, y):
         return coordinate_Scaling(
             x=int(x),
@@ -359,7 +541,7 @@ class Graphics_View(QGraphicsView):
             task='RESIZE',
             is_dual=True
         ) if self.background_image is not None else (-1, -1)
-    
+
     def coordinate_Scaling_To_Scene(self, x, y):
         return coordinate_Scaling(
             x=int(x),
@@ -371,33 +553,85 @@ class Graphics_View(QGraphicsView):
             task='RESIZE',
             is_dual=True
         ) if self.background_image is not None else (-1, -1)
-    
-    ### #### ###
-    ### TODO ###
-    ### #### ###
-    
-    def handler_Mouse_Event(self, mouse_Event = "mouseDoubleClick"):
+
+    # ## #### ###
+    # ## TODO ###
+    # ## #### ###
+
+    def handler_Mouse_Event(self, mouse_Event="mouseDoubleClick"):
         # print(f"self.mouse_Events[{mouse_Event}]: {self.mouse_Events[mouse_Event]}")
         last_response = self.mouse_Events[mouse_Event]
         self.mouse_Events[mouse_Event] = False
         return last_response
-    
+
+    def qtimer_Event_ROI_Rectangle(self, trigger_exit, controller_start="mouseDoubleClick", controller_end="mouseDoubleClick", mouse_Event="mouseDoubleClick_position", color="green", setAlphaF=0.43):
+        if controller_end in self.mouse_Events and mouse_Event in self.mouse_Events and callable(trigger_exit):
+            self.qtimer_drawer = qtimer_Create_And_Run(
+                self,
+                lambda: self.event_Draw_ROI_Rectangle(
+                    trigger_exit,
+                    controller_start,
+                    controller_end,
+                    mouse_Event,
+                    color,
+                    setAlphaF
+                ),
+                delay=100,
+                is_single_shot=True
+            )
+
+            # self.add_ROI_Rect_item_to_history(
+            #     self.draw_ROI_Rectangle(
+            #         start_pos=self.mouse_Events[mouse_Events],
+            #         controller_end=controller_end,
+            #         color=color
+            #     )
+            # )
+            return self.qtimer_drawer
+        return None
+
+    def event_ROI_Rectangle(self, trigger_exit, controller_start="mouseDoubleClick", controller_end="mouseDoubleClick", mouse_Event="mouseDoubleClick_position", color="green", setAlphaF=0.43):
+        item = None
+        if not self.is_Drawing_Now():
+            # self.is_Drawing_Now(True)
+            self.wait_for_ClickEvent(
+                control_function=lambda bool=None: self.is_mouseEvent(
+                    controller_start, bool
+                ),
+                event_loop_start=None,
+                event_loop_end=None
+            )
+
+            # if self.mouse_Events["mouseDoubleClick_current_item"] is not None:
+            #     self.mouse_Events["mouseDoubleClick_current_item"].resize_pos(lock_dimension, pos)
+
+            # item = self.draw_ROI_Rectangle(
+            #     start_pos=self.mouse_Events[mouse_Event],
+            #     create_holders=True,
+            #     controller_end=controller_end,
+            #     trigger_exit=trigger_exit,
+            #     color=color,
+            #     setAlphaF=setAlphaF
+            # )
+            # self.is_Drawing_Now(False)
+        return item
+
     def qtimer_Draw_ROI_Rectangle(self, trigger_exit, controller_start="mouseDoubleClick", controller_end="mouseDoubleClick", mouse_Event="mouseDoubleClick_position", color="green", setAlphaF=0.43):
         if controller_end in self.mouse_Events and mouse_Event in self.mouse_Events and callable(trigger_exit):
             self.qtimer_drawer = qtimer_Create_And_Run(
                 self,
                 lambda: self.event_Draw_ROI_Rectangle(
-                    trigger_exit, 
+                    trigger_exit,
                     controller_start,
-                    controller_end, 
-                    mouse_Event, 
+                    controller_end,
+                    mouse_Event,
                     color,
                     setAlphaF
                 ),
-                delay = 100,
+                delay=100,
                 is_single_shot=True
             )
-        
+
             # self.add_ROI_Rect_item_to_history(
             #     self.draw_ROI_Rectangle(
             #         start_pos=self.mouse_Events[mouse_Events],
@@ -416,7 +650,7 @@ class Graphics_View(QGraphicsView):
                 control_function=lambda bool=None: self.is_mouseEvent(
                     controller_start, bool
                 ),
-                event_loop_start=None, 
+                event_loop_start=None,
                 event_loop_end=None
             )
             item = self.draw_ROI_Rectangle(
@@ -452,8 +686,8 @@ class Graphics_View(QGraphicsView):
 
         # controller_end(False)
         # roi_item.doubleClick_control(False)
-        self.handler_Mouse_Event(mouse_Event = controller_end)
-        while self.handler_Mouse_Event(mouse_Event = controller_end) is False:
+        self.handler_Mouse_Event(mouse_Event=controller_end)
+        while self.handler_Mouse_Event(mouse_Event=controller_end) is False:
             w = self.mouse_Events["mouseMove_position_scene"].x() - x
             h = self.mouse_Events["mouseMove_position_scene"].y() - y
 
@@ -476,8 +710,8 @@ class Graphics_View(QGraphicsView):
 
         # controller_end(False)
         # roi_item.doubleClick_control(False)
-        self.handler_Mouse_Event(mouse_Event = controller_end)
-        
+        self.handler_Mouse_Event(mouse_Event=controller_end)
+
         # Fix Wrong(Switched) ROI Item Points
         if w < 0:
             x += w
@@ -495,9 +729,9 @@ class Graphics_View(QGraphicsView):
         # s_x, s_y, e_x, e_y, w, h = roi_item.info()
         # print("ROI Item Added position at", s_x, s_y, e_x, e_y, "| with", w, ": height", h)
         return roi_item
-    
+
     def add_ROI_Rectangle(
-        self, 
+        self,
         x, y,
         w, h,
         init,
@@ -510,7 +744,7 @@ class Graphics_View(QGraphicsView):
         pen_width
     ):
         roi_item = ROI_Rectangle(
-            self.scene(),
+            self.scene,
             x, y,
             w, h,
             init=init,
@@ -523,124 +757,211 @@ class Graphics_View(QGraphicsView):
             pen_width=pen_width
         )
         self.set_Last_Drawn_Item(roi_item)
+        self.scene().update()
         return roi_item
-    
+
     def get_Last_Drawn_Item(self):
         return self.last_drawn_item
-    
+
     def set_Last_Drawn_Item(self, roi_item):
         self.last_drawn_item = roi_item
-    
+        self.is_All_Clear = False
+
     def clear_Last_Drawn_Item(self):
         if self.last_drawn_item is not None:
             self.last_drawn_item.destroy()
             self.last_drawn_item = None
-    
-    def wait_for_ClickEvent(self, control_function, event_loop_start=None, event_loop_end=None): # lock_element=None):
+
+    def wait_for_ClickEvent(self, control_function, event_loop_start=None, event_loop_end=None):  # lock_element=None):
         control_function(False)
         # if lock_element is not None:
         #     self.__revert_enabled_element(lock_element)
-            
+
         while not control_function():
-            
+
             if callable(event_loop_start):
                 event_loop_start()
-                
+
             self.qt_Priority()
             self.scene().update()
-            
+
             if callable(event_loop_end):
                 event_loop_end()
 
         # if lock_element is not None:
         #     self.__revert_enabled_element(lock_element)
         control_function(False)
-    
+
     def qt_Priority(self):
         # https://stackoverflow.com/questions/8766584/displayin-an-image-in-a-qgraphicsscene
         QCoreApplication.processEvents()
-    
-    ### #### ###
-    ### #### ###
-    ### #### ###
-    
+
+    # ## #### ###
+    # ## #### ###
+    # ## #### ###
+
     def clear_Coords_Double_Clicked(self):
         self.list_coords_double_clicked = list()
-    
+
     def switch_focus_to_image(self, bool=None):
         self.is_focus_to_image = not self.is_focus_to_image \
             if bool is None else bool
-    
+
     def is_active_focus_to_image(self):
         return self.is_focus_to_image
-    
-    def initialize_focus_to_image(self, zoom_x_times = 1.5, width = 100, height = 100):
+
+    def initialize_focus_to_image(self, zoom_x_times=1.5, width=100, height=100):
         self.set_focus_to_image(zoom_x_times, width, height)
         self.switch_focus_to_image(bool=True)
-    
-    def set_focus_to_image(self, zoom_x_times = None, width = None, height = None):
+
+    def set_focus_to_image(self, zoom_x_times=None, width=None, height=None):
         self.zoom_x_times = zoom_x_times if zoom_x_times is not None else self.zoom_x_times
         self.zoom_width = width if width is not None else self.zoom_width
         self.zoom_height = height if height is not None else self.zoom_height
-        
+
     def focus_to_image(self):
         image_focus = None
+        modified_image = None
+        modified_pixmap = None
         if self.mouse_Events["mouseMove_position_scene"] is not None:
             background_image = self.get_Background_Item()
             if background_image is not None:
-                # QRect( x, y, width, height)
                 zoomed_height = self.zoom_width * self.zoom_x_times
                 zoomed_width = self.zoom_width * self.zoom_x_times
-                
+
                 start_x = self.mouse_Events["mouseMove_position_scene"].x() \
-                    - self.zoom_width / 2 
+                    - self.zoom_width / 2
                 start_y = self.mouse_Events["mouseMove_position_scene"].y() \
                     - self.zoom_height / 2
 
                 QT_Scene_Set_Item(
-                    self.scene(), 
+                    self.scene(),
                     background_image
                 )
-                image_focus = background_image.pixmap().copy(start_x, start_y, self.zoom_width, self.zoom_width).scaled(
-                    zoomed_width, zoomed_height,
-                    aspectRatioMode=Qt.KeepAspectRatio, # if keep_aspect_ratio else Qt.IgnoreAspectRatio,
+                image_focus = background_image.pixmap().copy(
+                    int(start_x), int(start_y), int(self.zoom_width), int(self.zoom_height)
+                ).scaled(
+                    int(zoomed_width), int(zoomed_height),
+                    aspectRatioMode=Qt.KeepAspectRatio,  # if keep_aspect_ratio else Qt.IgnoreAspectRatio,
                     transformMode=Qt.FastTransformation
-                )
+                ).toImage()
+
+                # stdo(1, "Qt-Image-Shape: {}, {}".format(image_focus.width(), image_focus.height()))
+
+                modified_image = qt_Type_To_Numpy_Converter(image_focus)
+
+                # stdo(1, "Shape: {}".format(modified_image.shape))
+
+                mid_x, mid_y = modified_image.shape[1] // 2, modified_image.shape[0] // 2
+                draw_Line(modified_image, (mid_x - 10, mid_y), (mid_x + 10, mid_y), (255, 0, 0), 2)
+                draw_Line(modified_image, (mid_x, mid_y - 10), (mid_x, mid_y + 10), (255, 0, 0), 2)
+
+                modified_pixmap = numpy_To_QPixmap(modified_image)
+
                 QT_Scene_Add_Item_To_Index(
                     self.scene(),
-                    image_focus,
+                    modified_pixmap,
                     index=1
                 )
-        return image_focus
+        return modified_pixmap
 
-    ### ### ### ### ### ###
-    ### QTIMER - RENDER ###
-    ### ### ### ### ### ###
+    # ## ### ### ### ### ###
+    # ## QTIMER - RENDER ###
+    # ## ### ### ### ### ###
 
-    def init_Render_QTimer(self, connector_stream, delay = 1):
+    def init_Render_QTimer(self, connector_stream, delay=1., clear_cache=False, id=0, cam_ip=0):
         # print("callable(connector_stream)", callable(connector_stream))
         # print("connector_stream()", connector_stream())
         if callable(connector_stream):
-            self.qtimer_render = qtimer_Create_And_Run(
+            self.qtimer_Render = qtimer_Create_And_Run(
                 self,
-                self.__QTimer_Render_Function,
+                lambda: self.__QTimer_Render_Function(clear_cache, id=id, cam_ip=cam_ip),
                 delay
             )
             self.render_buffer_caller = connector_stream
             return 0
         else:
             return 1
-    
-    def stop_Render_QTimer(self):
-        self.qtimer_render.stop() if self.qtimer_render is not None else None
-        
-    def __QTimer_Render_Function(self):
-        stream_image = self.render_buffer_caller()
-        self.set_Background_Image(stream_image)
 
-    ### ### ### ### ### ###
-    ### ### ### ### ### ###
-    ### ### ### ### ### ###
+    def wait_Background_To_Render(self):
+        while self.background_image is None:
+            self.qt_Priority()
+
+    def stop_Render_QTimer(self):
+        self.qtimer_Render.stop() if self.qtimer_Render is not None else None
+
+    def __QTimer_Render_Function(self, clear_cache, id=0, cam_ip=0):
+        # start_rbc = time.time()
+        stream_image = self.render_buffer_caller()
+        # stop_rbc = time.time() - start_rbc
+
+        # start_sbi = time.time()
+        self.set_Background_Image(stream_image, clear_cache=clear_cache, id=id)
+        # stop_sbi = time.time() - start_sbi
+        # print(f"Render Time: [{id}] RBC:{stop_rbc:.3f} | SBI:{stop_sbi:.3f}")
+
+    # ## ### ### ### ### ###
+    # ## ### ### ### ### ###
+    # ## ### ### ### ### ###
+
+    # ## ### ### ### ### ###
+    # ## QTIMER - ITEMS ###
+    # ## ### ### ### ### ###
+
+    def init_Items_Render_QTimer(self, delay=1):
+        # print("callable()", callable())
+        # print("()", ())
+        self.qtimer_Items_Render = qtimer_Create_And_Run(
+            self,
+            self.__QTimer_Items_Render_Function,
+            delay
+        )
+        return 0
+
+    def stop_Items_Render_QTimer(self):
+        self.qtimer_Items_Render.stop() if self.qtimer_Items_Render is not None else None
+
+    def add_ROI_Rectangle_To_Render(
+        self,
+        x, y,
+        w, h,
+        init,
+        keep_in_scene,
+        create_holders,
+        hold_point_offset,
+        color,
+        setAlphaF,
+        setAlphaF_holders,
+        pen_width
+    ):
+        self.items_buffer.append(
+            [
+                x, y,
+                w, h,
+                init,
+                keep_in_scene,
+                create_holders,
+                hold_point_offset,
+                color,
+                setAlphaF,
+                setAlphaF_holders,
+                pen_width
+            ]
+        )
+
+    def wait_Rectangle_To_Render(self):
+        while len(self.items_buffer) != 0:
+            self.qt_Priority()
+
+    def __QTimer_Items_Render_Function(self):
+        for item in self.items_buffer:
+            self.add_ROI_Rectangle(*item)
+        self.items_buffer.clear()
+
+    # ## ### ### ### ### ###
+    # ## ### ### ### ### ###
+    # ## ### ### ### ### ###
+
 
 class ROI_Rectangle(QGraphicsRectItem):
 
@@ -670,11 +991,11 @@ class ROI_Rectangle(QGraphicsRectItem):
 
         if init:
             self.init(
-                scene=scene, 
-                create_holders=create_holders, 
+                scene=scene,
+                create_holders=create_holders,
                 color=color,
-                setAlphaF=setAlphaF, 
-                setAlphaF_holders=setAlphaF_holders, 
+                setAlphaF=setAlphaF,
+                setAlphaF_holders=setAlphaF_holders,
                 pen_width=pen_width
             )
 
@@ -682,7 +1003,7 @@ class ROI_Rectangle(QGraphicsRectItem):
         if scene is not None:
             # scene.addItem(self)
             # QT_Scene_Add_Item_To_Index(scene, self, -1)
-            QT_Scene_Add_Item_To_Foreground(scene, self)
+            QT_Scene_Add_Item_To_Foreground(scene(), self)
             self.scenerect = self.scene().sceneRect()
 
         if self.parentItem() is None and create_holders:
@@ -695,12 +1016,12 @@ class ROI_Rectangle(QGraphicsRectItem):
         rect = self.itemChange(QGraphicsItem.ItemScaleChange, rect)
         self.setRect(rect)
 
-    def resize_pos(self, lock_dimesion, pos):
+    def resize_pos(self, lock_dimension, pos):
         start_x, start_y, _, _, width, height = self.info()
         rect = None
 
         # print("resize_pos", start_x, start_y, "| width, height", width, height)
-        if lock_dimesion == "up":
+        if lock_dimension == "up":
             rect = QRectF(
                 start_x,
                 start_y + pos.y(),
@@ -713,7 +1034,7 @@ class ROI_Rectangle(QGraphicsRectItem):
             self.hold_up.setRect()
             """
 
-        elif lock_dimesion == "down":
+        elif lock_dimension == "down":
             rect = QRectF(
                 start_x,
                 start_y,
@@ -721,7 +1042,7 @@ class ROI_Rectangle(QGraphicsRectItem):
                 height + pos.y()
             )
 
-        elif lock_dimesion == "left":
+        elif lock_dimension == "left":
             rect = QRectF(
                 start_x + pos.x(),
                 start_y,
@@ -729,7 +1050,7 @@ class ROI_Rectangle(QGraphicsRectItem):
                 height
             )
 
-        elif lock_dimesion == "right":
+        elif lock_dimension == "right":
             rect = QRectF(
                 start_x,
                 start_y,
@@ -737,10 +1058,10 @@ class ROI_Rectangle(QGraphicsRectItem):
                 height
             )
 
-        # print("lock_dimesion", lock_dimesion, rect)
+        # print("lock_dimension", lock_dimension, rect)
         if rect is not None:
             rect = self.itemChange(QGraphicsItem.ItemScaleChange, rect)
-            # rect = self.itemChange(lock_dimesion, rect)
+            # rect = self.itemChange(lock_dimension, rect)
             self.setRect(rect)
             self.scene().update()
 
@@ -750,18 +1071,18 @@ class ROI_Rectangle(QGraphicsRectItem):
         self.hold_down = ROI_Rectangle_Hold_Point()
         self.hold_left = ROI_Rectangle_Hold_Point()
         self.hold_right = ROI_Rectangle_Hold_Point()
-        
+
         self.hold_up.color(color=color, setAlphaF=setAlphaF, pen_width=0)
         self.hold_down.color(color=color, setAlphaF=setAlphaF, pen_width=0)
         self.hold_left.color(color=color, setAlphaF=setAlphaF, pen_width=0)
         self.hold_right.color(color=color, setAlphaF=setAlphaF, pen_width=0)
-        
+
         self.hold_up.setParentItem(self)
         self.hold_down.setParentItem(self)
         self.hold_left.setParentItem(self)
         self.hold_right.setParentItem(self)
         """
-        self.mid_roi = ROI_Rectangle_Hold_Point(scene=self.scene())
+        self.mid_roi = ROI_Rectangle_Hold_Point(scene=self.scene)
         # self.scene().addItem(self.mid_roi)
         self.mid_roi.color(color=color, setAlphaF=setAlphaF, pen_width=1)
         # self.mid_roi.opaqueArea(10)
@@ -804,7 +1125,7 @@ class ROI_Rectangle(QGraphicsRectItem):
                     self.hold_point_offset,
                 )
             )
-            
+
         if self.hold_down is not None:
             self.hold_down.setRect(
                 QRectF(
@@ -814,7 +1135,7 @@ class ROI_Rectangle(QGraphicsRectItem):
                     self.hold_point_offset,
                 )
             )
-            
+
         if self.hold_left is not None:
             self.hold_left.setRect(
                 QRectF(
@@ -824,7 +1145,7 @@ class ROI_Rectangle(QGraphicsRectItem):
                     height,
                 )
             )
-            
+
         if self.hold_right is not None:
             self.hold_right.setRect(
                 QRectF(
@@ -1021,9 +1342,9 @@ class ROI_Rectangle(QGraphicsRectItem):
             self.is_doubleClick = set_bool
         return self.is_doubleClick
 
-    ### #### ###
-    ### TODO ###
-    ### #### ###
+    # ## #### ###
+    # ## TODO ###
+    # ## #### ###
     """
     def grabMouse(self):
         self.is_grabMouse = True
@@ -1037,9 +1358,9 @@ class ROI_Rectangle(QGraphicsRectItem):
         #print("Item UN-Grabbed.")
         self.is_grabMouse = False
 
-    ### #### ###
-    ### #### ###
-    ### #### ###
+    # ## #### ###
+    # ## #### ###
+    # ## #### ###
     """
 
     def qt_Priority(self):
@@ -1070,8 +1391,8 @@ class ROI_Rectangle_Hold_Point(QGraphicsRectItem):
     def init(self, scene=None, color=None, setAlphaF=0.25, pen_width=0):
         if scene is not None:
             # scene.addItem(self)
-            QT_Scene_Add_Item_To_Foreground(scene, self)
-            self.scenerect = self.scene().sceneRect() # if self.scene() is not None else None
+            QT_Scene_Add_Item_To_Foreground(scene(), self)
+            self.scenerect = self.scene().sceneRect()  # if self.scene() is not None else None
 
         if self.scene is not None:
             self.scenerect = self.scene().sceneRect() if self.scene() is not None else None
@@ -1108,10 +1429,10 @@ class ROI_Rectangle_Hold_Point(QGraphicsRectItem):
         else:
             return self.brush, self.pen
 
-        
-### ### ### ### ### ## ## ## ### ### ### ### ###
-### ### ### UI WINDOW CONFIGURATIONS ### ### ###
-### ### ### ### ### ## ## ## ### ### ### ### ###
+
+# ## ### ### ### ### ## ## ## ### ### ### ### ###
+# ## ### ### UI WINDOW CONFIGURATIONS ### ### ###
+# ## ### ### ### ### ## ## ## ### ### ### ### ###
 class Ui_ImagePopup_Modified(QMainWindow):  # , Ui_ImagePopup):
     def __init__(self, *args, obj=None, **kwargs):
         super(Ui_ImagePopup_Modified, self).__init__(*args, **kwargs)
@@ -1129,7 +1450,7 @@ class Ui_ImagePopup_Modified(QMainWindow):  # , Ui_ImagePopup):
                 self.setMinimumSize(window_size)
 
                 # rect (window_size)
-                #self.setGeometry()
+                # self.setGeometry()
 
             if keep_aspect_ratio:
                 stdo(2, "Keep Aspect Ratio Feature is still at development.")
@@ -1143,9 +1464,9 @@ class Ui_ImagePopup_Modified(QMainWindow):  # , Ui_ImagePopup):
         self.qt_label_image.setPixmap(image)
 
 
-### ### ### ### ### # ### ### ### ### ###
-### ### ### UI CONFIGURATIONS ### ### ###
-### ### ### ### ### # ### ### ### ### ###
+# ## ### ### ### ### # ### ### ### ### ###
+# ## ### ### UI CONFIGURATIONS ### ### ###
+# ## ### ### ### ### # ### ### ### ### ###
 class Structure_UI(QMainWindow):
 
     def __init__(self, Parent=None, UI_File_Path="", title="", logger_level=logging.NOTSET):
@@ -1159,18 +1480,20 @@ class Structure_UI(QMainWindow):
 
         # self.UI_File_Path = ""
         self.Garbage_Collection = list()
-        
+
         self.QTimer_Dict = dict()
         self.Buffer_Dict = dict()
-        
+
         self.mouse_Events = dict()
-        
-        #self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+
+        # self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.UI_File_Path = UI_File_Path
         self.Parent = Parent
         self.load_UI(self, self.UI_File_Path) if self.UI_File_Path is not None else self.setupUi(self)
         self.init_Buffers()
         self.init_Logging(logger_level)
+
+        # self.showFullScreen() # Other admin windows either fulled on screen, find another method!
 
     @staticmethod
     def load_UI(UI, UI_File_Path):
@@ -1178,8 +1501,8 @@ class Structure_UI(QMainWindow):
         uic.loadUi(UI_File_Path, UI) if UI_File_Path != "" else None
 
         # self.Parent.configure_Other_Settings()
-        UI.init_QTimers()
-        UI.configure_Button_Connections()
+        # UI.init_QTimers()
+        # UI.configure_Button_Connections()
 
     @staticmethod
     def set_Style_Sheet(QObject, style_sheet_file_path):
@@ -1230,17 +1553,17 @@ class Structure_UI(QMainWindow):
         )
         return q_item_model
 
-    ### ### ### ## ### ###
-    ### MDI SUB WINDOW ###
-    ### ### ### ## ### ###
-    
+    # ## ### ### ## ### ###
+    # ## MDI SUB WINDOW ###
+    # ## ### ### ## ### ###
+
     @staticmethod
     def create_Sub_Window(parent, mdiArea, UI_Class, title="Sub Window", UI_File_Path=""):
         sub_window = UI_Class(parent, UI_File_Path)
         """
         app, sub_window = app, ui = init_UI(
-            Class_UI=UI_Class, 
-            UI_File_Path="camera_api_developer_UI.ui", 
+            Class_UI=UI_Class,
+            UI_File_Path="camera_api_developer_UI.ui",
             is_Maximized=False
         )
         sub_window.Parent = parent
@@ -1248,11 +1571,11 @@ class Structure_UI(QMainWindow):
         sub_window.setWindowTitle(title)
         sub_window.mdiArea = mdiArea
         return mdiArea.addSubWindow(sub_window)
-    
+
     @staticmethod
     def destroy_Sub_Window(mdiArea, sub_window):
         mdiArea.removeSubWindow(sub_window)
-    
+
     @staticmethod
     def graphicsView_Renderer(graphicsView, numpy_image, index=-1):
         if numpy_image is None:
@@ -1264,13 +1587,13 @@ class Structure_UI(QMainWindow):
                 width=graphicsView.width() - 5,
                 height=graphicsView.height() - 5
             )
-    
+
             if index == -1:
                 QT_Scene_Set_Item(
                     graphicsView.scene(),
                     qt_image
                 )
-                
+
             else:
                 QT_Scene_Add_Item_To_Index(
                     graphicsView.scene(),
@@ -1294,13 +1617,13 @@ class Structure_UI(QMainWindow):
         graphicsView.mouseReleaseEvent = mouseReleaseEvent
         graphicsView.mouseDoubleClickEvent = mouseDoubleClickEvent
         graphicsView.mousePressEvent = mousePressEvent
-        
+
     @staticmethod
     def init_qt_graphicsView_Scene(graphicsView):
         scene = QGraphicsScene()
         graphicsView.setScene(scene)
         return scene
-    
+
     def mouseReleaseEvent_graphics(self, event):
         self.mouse_Events["position"]
         self.mouseRelease_graphics_pos = event.pos()
@@ -1341,12 +1664,11 @@ class Structure_UI(QMainWindow):
 
         self.click_scene_current_item = self.scene().itemAt(
             self.click_graphics_pos_scene, QTransform())
-    
 
     """
-    ### ### ### ### ###
-    ### BUFFER APIs ###
-    ### ### ### ### ###
+    # ## ### ### ### ###
+    # ## BUFFER APIs ###
+    # ## ### ### ### ###
 
     @staticmethod
     def set_Buffer(buffer, data):
@@ -1355,23 +1677,23 @@ class Structure_UI(QMainWindow):
     @staticmethod
     def get_Buffer():
         return buffer.append(data)
-    
-    ### ### ### ### ###
-    ### ### ### ### ###
-    ### ### ### ### ###
-    """
-    
-    ### ### ### ### ### ###
-    ###  INTERNET APIs  ###
-    ### ### ### ### ### ###
 
-    ### ### ### ## ## ## ### ### ###
-    ### INTERNET RECEIVER OBJECT ###
-    ### ### ### ## ## ## ### ### ###
+    # ## ### ### ### ###
+    # ## ### ### ### ###
+    # ## ### ### ### ###
+    """
+
+    # ## ### ### ### ### ###
+    # ##  INTERNET APIs  # ##
+    # ## ### ### ### ### ###
+
+    # ## ### ### ## ## ## ### ### ###
+    # ## INTERNET RECEIVER OBJECT ###
+    # ## ### ### ## ## ## ### ### ###
     def init_Internet_Receiver(
-        self, 
-        ip_receiver="127.0.0.1", 
-        port_receiver=3333, 
+        self,
+        ip_receiver="127.0.0.1",
+        port_receiver=3333,
         logger_level=logging.CRITICAL,
         delay=0.0000001,
         parsing_format=None,
@@ -1381,15 +1703,15 @@ class Structure_UI(QMainWindow):
     ):
         global Internet_Receiver
         from structure_internet import Internet_Receiver
-        
+
         _internet_Receiver = Internet_Receiver(
             host=ip_receiver,
             port=port_receiver,
             timeout=2,
             set_blocking=False,
             logger_level=logger_level,
-            #parsing_format="\n\|--- *"
-            #parsing_format="\[|]|\n",
+            # parsing_format="\n\|--- *"
+            # parsing_format="\[|]|\n",
             parsing_format=parsing_format,
             regex=regex,
             delay=delay,
@@ -1404,21 +1726,21 @@ class Structure_UI(QMainWindow):
         _internet_Receiver.start()
         self.internet_Receiver_Dict[_internet_Receiver.name] = _internet_Receiver
         return _internet_Receiver.name
-        
+
     def Internet_Receiver_Buffer_Returner(self, name):
         return self.internet_Receiver_Dict[name].buffer_Get()
-        
-    ### ### ### ## ## ## ### ### ###
-    ### ### ### ## ## ## ### ### ###
-    ### ### ### ## ## ## ### ### ###
-        
-    ### ### ### ## ### ### ### ###
-    ### INTERNET SENDER OBJECT ###
-    ### ### ### ## ### ### ### ###
+
+    # ## ### ### ## ## ## ### ### ###
+    # ## ### ### ## ## ## ### ### ###
+    # ## ### ### ## ## ## ### ### ###
+
+    # ## ### ### ## ### ### ### ###
+    # ## INTERNET SENDER OBJECT ###
+    # ## ### ### ## ### ### ### ###
     def init_Internet_Sender(
-        self, 
-        ip_sender="127.0.0.1", 
-        port_sender=3333, 
+        self,
+        ip_sender="127.0.0.1",
+        port_sender=3333,
         logger_level=logging.CRITICAL,
         delay=0.0000001,
         parsing_format=None,
@@ -1428,7 +1750,7 @@ class Structure_UI(QMainWindow):
     ):
         global Internet_Sender
         from structure_internet import Internet_Sender
-        
+
         _internet_Sender = Internet_Sender(
             host=ip_sender,
             port=port_sender,
@@ -1442,31 +1764,42 @@ class Structure_UI(QMainWindow):
         )
         _internet_Sender.logger.disabled = disable_Logger
         # _internet_Sender.buffer_Overwrite()
-        
+
         # _internet_Sender.buffer_Append(data, lock_until_done=True)
         _internet_Sender.start()
         self.internet_Sender_Dict[_internet_Sender.name] = _internet_Sender
         return _internet_Sender.name
-        
+
     def Internet_Sender_Buffer_Append(self, name, data, lock_until_done=True):
         self.internet_Sender_Dict[name].buffer_Append(data, lock_until_done=lock_until_done)
-        
+
     def set_Internet_Parser_Format(self, parser_format):
         self.internet_Parser_Format = parser_format
-        
-        
-    ### ### ### ## ### ### ### ###
-    ### ### ### ## ### ### ### ###
-    ### ### ### ## ### ### ### ###
-            
-    
-    ### ### ### ### ### ###
-    ### ### ### ### ### ###
-    ### ### ### ### ### ###
 
-    ### ### ### ## ### ###
-    ### ### ### ## ### ###
-    ### ### ### ## ### ###
+    # ## ### ### ## ### ### ### ###
+    # ## ### ### ## ### ### ### ###
+    # ## ### ### ## ### ### ### ###
+
+    # ## ### ## ### ###
+    # ## IMAGE APIs ###
+    # ## ### ## ### ###
+
+    def save_Image_Action(self, img, path=None, filename=[], format="png"):
+        save_image(img, path=path, filename=filename, format=format)
+
+    def load_Image_Action(self, path=None, format="png"):
+        if path:
+            return open_image(path=path, option="cv2-rgb")
+        else:
+            return None
+
+    # ## ### ## ### ###
+    # ## ### ## ### ###
+    # ## ### ## ### ###
+
+    # ## ### ### ## ### ###
+    # ## ### ### ## ### ###
+    # ## ### ### ## ### ###
 
     def init_Logging(self, logger_level=logging.NOTSET, filename="", format='[%(asctime)s][%(levelname)s] %(name)s : %(message)s', datefmt="%Y-%m-%d %H:%M:%S"):
         self.Logger = logging.getLogger('[{}]'.format(self.windowTitle()))
@@ -1483,7 +1816,7 @@ class Structure_UI(QMainWindow):
         handler.setFormatter(formatter)
         self.Logger.addHandler(handler)
         self.Logger.setLevel(logger_level)
-        
+
         """
             is_logger_disabled: True/False
             logger_level
@@ -1503,7 +1836,7 @@ class Structure_UI(QMainWindow):
 
     def init_QTimers(self):
         self.QTimer_Dict["garbage_Collector_Cleaner"] = qtimer_Create_And_Run(
-            self, 
+            self,
             self.garbage_Collector_Cleaner,
             60000
         )
@@ -1562,39 +1895,39 @@ class Structure_UI(QMainWindow):
             is_needed_start=True,
             is_single_shot=False
         )
-        
+
     def init_Buffers(self):
 
-        ###############################################################
-        #################### QT UI UPDATER EVENTS #####################
-        ###############################################################
+        # ##############################################################
+        # ################### QT UI UPDATER EVENTS #####################
+        # ##############################################################
 
-        self.Buffer_Dict["qt_function"] = Structure_Buffer(name="{}:qt_function".format(self.windowTitle()), max_limit=500)
+        self.Buffer_Dict["qt_function"] = Structure_Buffer(name="{}:qt_function".format(self.windowTitle()), max_limit=50)
 
-        self.Buffer_Dict["qt_messagebox"] = Structure_Buffer(name="{}:qt_messagebox".format(self.windowTitle()), max_limit=500)
+        self.Buffer_Dict["qt_messagebox"] = Structure_Buffer(name="{}:qt_messagebox".format(self.windowTitle()), max_limit=50)
 
-        self.Buffer_Dict["qt_color_painter"] = Structure_Buffer(name="{}:qt_color_painter".format(self.windowTitle()), max_limit=500)
+        self.Buffer_Dict["qt_color_painter"] = Structure_Buffer(name="{}:qt_color_painter".format(self.windowTitle()), max_limit=50)
 
-        self.Buffer_Dict["qt_object_text"] = Structure_Buffer(name="{}:qt_object_text".format(self.windowTitle()), max_limit=500)
-        
+        self.Buffer_Dict["qt_object_text"] = Structure_Buffer(name="{}:qt_object_text".format(self.windowTitle()), max_limit=50)
+
         self.Buffer_Dict["qt_file_dialog"] = Structure_Buffer(name="{}:qt_file_dialog".format(self.windowTitle()), max_limit=1)
-        
+
         self.Buffer_Dict["qt_file_dialog_return"] = Structure_Buffer(name="{}:qt_file_dialog_return".format(self.windowTitle()), max_limit=1)
-        
-        ###############################################################
-        ###############################################################
-        ###############################################################
-        
+
+        # ##############################################################
+        # ##############################################################
+        # ##############################################################
+
     def garbage_Collector_Cleaner(self):
         if len(self.Garbage_Collection) > 10:
             self.Garbage_Collection.clear()
 
     def garbage_Collector_Add(self, garbage):
         self.Garbage_Collection.append(garbage)
-        
+
     def garbage_Collector_Pop(self, garbage_index=0):
         return self.Garbage_Collection.pop(garbage_index)
-        
+
     def configure_Button_Connections(self):
         pass
         #stdo("Overwrite configure_Button_Connections Function!")
@@ -1611,10 +1944,10 @@ class Structure_UI(QMainWindow):
         qtimer_All_Stop(self.QTimer_Dict)
         # stdo(1, "Closing with Class Default closeEvent")
         return super().closeEvent(a0)
-    
-    ############################################################
-    ######## QT MESSAGEBOX AND QT PAINTER STRUCTURE ############
-    ############################################################
+
+    # ###########################################################
+    # ####### QT MESSAGEBOX AND QT PAINTER STRUCTURE ############
+    # ###########################################################
 
     def qtimer_QTFunction_Caller_Event(self, qt_function_buffer):
         if len(qt_function_buffer) > 0:
@@ -1644,7 +1977,7 @@ class Structure_UI(QMainWindow):
 
         elif qt_messagebox_flag == QT_MESSAGEBOX_FLAGS.WARNING_OK:
             QMessageBox.warning(self, *qt_messagebox_buffer, QMessageBox.Ok)
-        
+
         elif qt_messagebox_flag == QT_MESSAGEBOX_FLAGS.QUESTION:
             ret = QMessageBox.question(self, *qt_messagebox_buffer, QMessageBox.Yes | QMessageBox.No)
             if ret == QMessageBox.Yes:
@@ -1683,47 +2016,52 @@ class Structure_UI(QMainWindow):
 
     def QObject_Text_Event_Add(self, event):
         self.Buffer_Dict["qt_object_text"].nts_Append(event)
-        
-    ############################################################
-    ############################################################
-    ############################################################
-    
-    ############################################################
-    ################ QT FILE DIALOG STRUCTURE ##################
-    ############################################################
-    
+
+    # ###########################################################
+    # ###########################################################
+    # ###########################################################
+
+    # ###########################################################
+    # ############### QT FILE DIALOG STRUCTURE ##################
+    # ###########################################################
+
     def qtimer_QFileDialog_Event(self, qt_filedialog_buffer):
         if len(qt_filedialog_buffer) > 0:
             buffer = qt_filedialog_buffer.nts_Pop()
-            self.Buffer_Dict["qt_file_dialog_return"].append(self.QFileDialog_Event(buffer))
+            self.Buffer_Dict["qt_file_dialog_return"].append(self.QFileDialog_Event(*buffer))
 
     def QFileDialog_Event(self, qt_filedialog_function, qt_filedialog_buffer):
         if qt_filedialog_function == 'getOpenFileName':
-            return QFileDialog.getOpenFileName(self, *qt_filedialog_buffer)
+            path = QFileDialog.getOpenFileName(self, *qt_filedialog_buffer)
+            return [""] if path is None else path
         elif qt_filedialog_function == 'getExistingDirectory':
-            return QFileDialog.getExistingDirectory(self, *qt_filedialog_buffer)
+            path =  QFileDialog.getExistingDirectory(self, *qt_filedialog_buffer)
+            return [""] if path is None else path
 
     def QFileDialog_Event_Add(self, event):
         self.Buffer_Dict["qt_file_dialog"].nts_Append(event)
-    
-    ############################################################
-    ############################################################
-    ############################################################
-    
+
+    # ###########################################################
+    # ###########################################################
+    # ###########################################################
+
+    def set_Window_Icon(self, icon_path):
+        self.setWindowIcon(QIcon(icon_path))
+
     @staticmethod
     def disable_Elements(element_list):
         for element in element_list:
             element.setEnabled(False)
-            
+
     @staticmethod
     def enable_Elements(element_list):
         for element in element_list:
             element.setEnabled(True)
-    
+
     def qt_Priority(self):
         # https://stackoverflow.com/questions/8766584/displayin-an-image-in-a-qgraphicsscene
         QCoreApplication.processEvents()
-        
+
         if self.is_Quit_App():
             # self.qtimer_stop_dict(self.dict_qtimer)
             self.closeEvent(None)
@@ -1731,7 +2069,7 @@ class Structure_UI(QMainWindow):
             #seppuku()
             #sys.exit()
         sleep(0.00001)
-    
+
 
 """
 class Structure_UI_MDI_SubWindow(Structure_UI, QMdiSubWindow):
@@ -1740,13 +2078,13 @@ class Structure_UI_MDI_SubWindow(Structure_UI, QMdiSubWindow):
 
     def closeEvent(self, *args, **kwargs):
         super(Structure_UI_MDI_SubWindow, self).closeEvent(*args, **kwargs)
-        
+
         self.Parent.destroy_Sub_Window(None, self)
 """
-        
-### ### ### ### ## ## ## ### ### ### ###
-### ### ### CUSTOM FUNCTIONS ### ### ###
-### ### ### ### ## ## ## ### ### ### ###
+
+# ## ### ### ### ## ## ## ### ### ### ###
+# ## ### ### CUSTOM FUNCTIONS ### ### ###
+# ## ### ### ### ## ## ## ### ### ### ###
 
 def init_UI(Class_UI, UI_File_Path="test.ui"):
     global app
@@ -1762,8 +2100,9 @@ def init_UI(Class_UI, UI_File_Path="test.ui"):
     return app, ui
 
 
-def run_UI(app, UI, title, show_UI=True, is_Maximized=False):
+def run_UI(app, UI, title, icon_path="", show_UI=True, is_Maximized=False):
     UI.setWindowTitle(title)
+    #UI.set_Window_Icon(icon_path)
 
     if show_UI:
         if is_Maximized:
@@ -1785,7 +2124,8 @@ def init_and_run_UI(title, Class_UI, run=True, UI_File_Path="test.ui", show_UI=T
             UI=ui,
             title=title,
             show_UI=show_UI,
-            is_Maximized=is_Maximized
+            is_Maximized=is_Maximized,
+            icon_path=""
         )
     return app, ui
 

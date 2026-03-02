@@ -23,16 +23,10 @@ from tools import get_OS
 from structure_data import Structure_Buffer
 from structure_threading import Thread_Object
 
-# #### #### #### #### #
-#       GLOBALS       #
-# #### #### #### #### #
-SERVER_PORT = 9966
-
 
 ### ### ### ### ### ### ### ### ### ###
 ### ### ### ### ### ### ### ### ### ###
 ### ### ### ### ### ### ### ### ### ###
-
 
 class Internet_Receiver():
     __Internet_Receiver_Object_Counter = 0
@@ -132,7 +126,7 @@ class Internet_Receiver():
                 self.logger.info("Address is {}".format(address))
 
                 while conn:
-                    self.data_Received = conn.recv(1024)
+                    self.data_Received = conn.recv(1048576)
 
                     # FOR TEST
                     # self.data_Received = b"is_snapshot:1"
@@ -197,6 +191,7 @@ class Internet_Receiver():
         while lock_until_done:
             if self.__buffer_Stream.is_Buffer_Full():
                 sleep(delay)
+                break
             else:
                 self.__buffer_Stream.append(data)
                 break
@@ -235,7 +230,7 @@ class Internet_Receiver():
                 name=self.name + ".start",
                 delay=0.0001,
                 logger_level=self.logger.getEffectiveLevel(),
-                set_Deamon=True,
+                set_Daemon=True,
                 run_number=None,
                 quit_trigger=trigger_quit
             )
@@ -298,13 +293,13 @@ class Internet_Receiver():
             if trigger_quit is not None:
                 if trigger_quit():
                     self.logger.debug(
-                        "start_Thread quit trigger activated! Quiting..."
+                        "start_Thread quit trigger activated! Quitting..."
                     )
                     self.quit()
                     return 0  # break # Lets make it clear at quit statement
             elif self.instance_Exit_Statement:
                 self.logger.debug(
-                    "{} Internet Sender Instance start_Thread Exit Statement activated! Quiting...".format(
+                    "{} Internet Sender Instance start_Thread Exit Statement activated! Quitting...".format(
                         self.name
                     )
                 )
@@ -336,9 +331,9 @@ class Internet_Receiver():
         for thread_id, thread in self.__thread_Dict.items():
             thread.statement_quit = True
             self.logger.info("Thread {}:{} stopped.".format(
-                thread_id,
-                thread.name
-            )
+                    thread_id,
+                    thread.name
+                )
             )
         self.__thread_Dict.clear()
 
@@ -376,7 +371,7 @@ class Internet_Receiver():
         dict_information = dict()
         dict_information["host"] = self.host
         dict_information["port"] = self.port
-        dict_information["is_connection_ok"] = int(self.__is_Connection_Ok)
+        dict_information["is_connection_ok"] = self.__is_Connection_Ok
         dict_information["set_blocking"] = self.set_Blocking
         dict_information["timeout"] = self.timeout
         dict_information["address_Last"] = self.address_Last
@@ -497,7 +492,7 @@ class Internet_Sender():
                 name=self.name + ".start",
                 delay=0.0001,
                 logger_level=self.logger.getEffectiveLevel(),
-                set_Deamon=True,
+                set_Daemon=True,
                 run_number=None,
                 quit_trigger=trigger_quit
             )
@@ -533,17 +528,17 @@ class Internet_Sender():
                     # data = self.buffer_Pop()
                     data = self.buffer_Get(index=0)
 
-                    is_Successfull = self.send_Data(
+                    is_Successful = self.send_Data(
                         data
                     )
 
-                    if is_Successfull:
+                    if is_Successful:
                         self.buffer_Pop()
                         if number_of_send > 0:
                             number_of_send -= 1
                     else:
                         self.logger.debug(
-                            "UNSuccessfull send_Data action!"
+                            "UNSuccessful send_Data action!"
                         )
                         # self.__buffer_Stream.insert(0, data)
                 """
@@ -555,13 +550,13 @@ class Internet_Sender():
             if trigger_quit is not None:
                 if trigger_quit():
                     self.logger.debug(
-                        "start_Thread quit trigger activated! Quiting..."
+                        "start_Thread quit trigger activated! Quitting..."
                     )
                     self.quit()
                     return 0  # break # Lets make it clear at quit statement
             elif self.instance_Exit_Statement:
                 self.logger.debug(
-                    "{} Internet Sender Instance start_Thread Exit Statement activated! Quiting...".format(
+                    "{} Internet Sender Instance start_Thread Exit Statement activated! Quitting...".format(
                         self.name
                     )
                 )
@@ -669,6 +664,7 @@ class Internet_Sender():
             # if len(self.__buffer_Stream) == self.__buffer_Stream.max_limit:
             if self.__buffer_Stream.is_Buffer_Full():
                 sleep(delay)
+                break
             else:
                 self.__buffer_Stream.append(data)
                 break
@@ -720,7 +716,7 @@ class Internet_Sender():
         dict_information = dict()
         dict_information["host"] = self.host
         dict_information["port"] = self.port
-        dict_information["is_connection_ok"] = int(self.__is_Connection_Ok)
+        dict_information["is_connection_ok"] = self.__is_Connection_Ok
         dict_information["set_blocking"] = self.set_Blocking
         dict_information["timeout"] = self.timeout
         dict_information["data_Last_Sended"] = self.data_Last_Sended

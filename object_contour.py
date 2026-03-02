@@ -10,7 +10,7 @@ from scipy.signal import find_peaks
 
 from image_manipulation import auto_Interpolation, remove_Small_Object, contour_Centroids, threshold
 from image_tools import save_image
-from extractor_centroid import coord
+from extractor_centroid import detect_Centroid_Of_Segmented_Symbols
 
 
 absolute_path = os.path.dirname(os.path.abspath(__file__))
@@ -905,7 +905,7 @@ class PROCESS_TOOLS:
             cv2.rectangle(display_image_symbols, (int(bound_rect[i][0]), int(bound_rect[i][1]), int(bound_rect[i][2]), int(bound_rect[i][3])), (24,132,255), 2)
         """
 
-        display_image_symbols, bound_rect, _, centroids_of_symbols, _ = coord(rso)
+        display_image_symbols, bound_rect, _, centroids_of_symbols, _ = detect_Centroid_Of_Segmented_Symbols(rso)
 
 
         #display_image_symbols = cv2.cvtColor(display_image_symbols, cv2.COLOR_BGR2RGB)
@@ -919,11 +919,10 @@ class PROCESS_TOOLS:
         #filename = [str(counter)+"_1gray", str(counter)+"_2pre_threshold", str(counter)+"_3inner_mask", str(counter)+"_4not_inner_mask", str(counter)+"_5inlay_symbols", str(counter)+"_6closing", str(counter)+"_7rso", str(counter)+"_8display"]
         #save_image(list_temp_save_image, path="temp_files/extractor_inlay_process", filename=filename, format="png")
 
-        
         return np.array(centroids_of_symbols), rso_inlay_zone, contours, bound_rect, rso, display_image_symbols
         #return rso, np.array(centroids_of_symbols), bound_rect, rso_inlay_zone
 
-class APPLIABLE_ALGORITHMS(OrderedEnum):
+class APPLICABLE_ALGORITHMS(OrderedEnum):
     SHI_THOMASI = 0
     DOUGLAS_PEUCKER = 1
     BMLHT = 2 #FOOTNOT: This is an our developed algorithm# #Based Multiple Line Histogram Transaction | TODO: Change Algorithm name :) #
@@ -951,7 +950,7 @@ class FIND_COUNTERS:
 
         self._obj_PROCESS_TOOLS = PROCESS_TOOLS()
 
-    def calculate(self, src_frame, object_id, indicator=None, box_coordinates=(0,0,0,0), number_of_lines=10, algorithm=APPLIABLE_ALGORITHMS.BMLHT, is_autointerpolation_active=False, object_color='white', crop_parameters=[0,0,0,0]):
+    def calculate(self, src_frame, object_id, indicator=None, box_coordinates=(0,0,0,0), number_of_lines=10, algorithm=APPLICABLE_ALGORITHMS.BMLHT, is_autointerpolation_active=False, object_color='white', crop_parameters=[0,0,0,0]):
         self.src_frame = src_frame
         old_h, old_w = self.src_frame.shape[:2]
         self.object_id = object_id
@@ -967,7 +966,7 @@ class FIND_COUNTERS:
         self.object_color = object_color
         self.crop_parameters = crop_parameters
 
-        if algorithm == APPLIABLE_ALGORITHMS.BMLHT:
+        if algorithm == APPLICABLE_ALGORITHMS.BMLHT:
             
             #self.src_frame = self._obj_PROCESS_TOOLS.pre_Process(self.src_frame, object_view=self.object_id, object_id_crop=self.dict_crop_lut[self.object_id], is_resized=True, is_gpu_active=False)
             
@@ -1158,7 +1157,7 @@ class FIND_COUNTERS:
 
             return self.object_contour_points, self.data_signal_for_graphing, self.number_of_lines
 
-        elif algorithm == APPLIABLE_ALGORITHMS.SHI_THOMASI:
+        elif algorithm == APPLICABLE_ALGORITHMS.SHI_THOMASI:
             self.dst_frame = self._obj_PROCESS_TOOLS.inlay_Extract_Button(self.src_frame)
             contours, _ = cv2.findContours(self.dst_frame[6] , cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
             centroids_of_symbols = contour_Centroids(contours)

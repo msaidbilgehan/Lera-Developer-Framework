@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>686</width>
-    <height>573</height>
+    <height>596</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -168,8 +168,14 @@ p, li { white-space: pre-wrap; }
     </item>
     <item row="5" column="0" colspan="2">
      <widget class="QProgressBar" name="progressBar">
+      <property name="minimum">
+       <number>0</number>
+      </property>
+      <property name="maximum">
+       <number>90</number>
+      </property>
       <property name="value">
-       <number>24</number>
+       <number>0</number>
       </property>
      </widget>
     </item>

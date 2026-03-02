@@ -13,12 +13,12 @@ from tools import list_files
 ### ### ### UI OBJECT CONFIGURATIONS ### ### ###
 ### ### ### ### ### ## ## ## ### ### ### ### ###
 class ROI_Rect(QGraphicsRectItem):
-    
+
     def __init__(self, scene=None, x=0, y=0, w=10, h=10, init=True, keep_in_scene=True, create_holders=True, hold_point_offset = 15, color=None, setAlphaF=0.25, setAlphaF_holders=0.25, pen_width=0):
 
         self.keep_in_scene = keep_in_scene
         self.history = list()
-        
+
         self.creation_offset_x = x
         self.creation_offset_y = y
 
@@ -45,17 +45,17 @@ class ROI_Rect(QGraphicsRectItem):
         if scene is not None:
             scene.addItem(self)
             self.scenerect = self.scene().sceneRect()
-        
+
         if self.parentItem() is None and create_holders:
             self.holding_parts(color="white", setAlphaF=setAlphaF_holders)
-        
+
         if color is not None:
             self.color(color=color, setAlphaF=setAlphaF, pen_width=pen_width)
 
     def resize_rect(self, rect):
         rect = self.itemChange(QGraphicsItem.ItemScaleChange, rect)
         self.setRect(rect)
-        
+
     def resize_pos(self, lock_dimesion, pos):
         start_x, start_y, _, _, width, height = self.info()
         rect = None
@@ -81,7 +81,7 @@ class ROI_Rect(QGraphicsRectItem):
                 width,
                 height + pos.y()
             )
-            
+
         elif lock_dimesion == "left":
             rect = QRectF(
                 start_x + pos.x(),
@@ -89,7 +89,7 @@ class ROI_Rect(QGraphicsRectItem):
                 width - pos.x(),
                 height
             )
-            
+
         elif lock_dimesion == "right":
             rect = QRectF(
                 start_x,
@@ -97,14 +97,14 @@ class ROI_Rect(QGraphicsRectItem):
                 width + pos.x(),
                 height
             )
-            
+
         # print("lock_dimesion", lock_dimesion, rect)
         if rect is not None:
             rect = self.itemChange(QGraphicsItem.ItemScaleChange, rect)
             # rect = self.itemChange(lock_dimesion, rect)
             self.setRect(rect)
             self.scene().update()
-            
+
 
     def holding_parts(self, color="red", setAlphaF=0.15):
         """
@@ -112,12 +112,12 @@ class ROI_Rect(QGraphicsRectItem):
         self.hold_down = ROI_Rect_Hold()
         self.hold_left = ROI_Rect_Hold()
         self.hold_right = ROI_Rect_Hold()
-        
+
         self.hold_up.color(color=color, setAlphaF=setAlphaF, pen_width=0)
         self.hold_down.color(color=color, setAlphaF=setAlphaF, pen_width=0)
         self.hold_left.color(color=color, setAlphaF=setAlphaF, pen_width=0)
         self.hold_right.color(color=color, setAlphaF=setAlphaF, pen_width=0)
-        
+
         self.hold_up.setParentItem(self)
         self.hold_down.setParentItem(self)
         self.hold_left.setParentItem(self)
@@ -129,14 +129,14 @@ class ROI_Rect(QGraphicsRectItem):
         # self.mid_roi.opaqueArea(10)
 
         self.mid_roi.setParentItem(self)
-        
+
         self.resize_holding_points()
 
     def move_holding_points(self):
         start_x = self.boundingRect().topLeft().x()
         start_y = self.boundingRect().topLeft().y()
-        
-        
+
+
         if self.mid_roi is not None:
             self.mid_roi.setPos(
                 QPointF(
@@ -147,7 +147,7 @@ class ROI_Rect(QGraphicsRectItem):
 
     def resize_holding_points(self):
         start_x, start_y, _, _, width, height = self.info()
-        
+
         if self.mid_roi is not None:
             self.mid_roi.setRect(
                 QRectF(
@@ -167,7 +167,7 @@ class ROI_Rect(QGraphicsRectItem):
                     self.hold_point_offset,
                 )
             )
-            
+
         if self.hold_down is not None:
             self.hold_down.setRect(
                 QRectF(
@@ -177,7 +177,7 @@ class ROI_Rect(QGraphicsRectItem):
                     self.hold_point_offset,
                 )
             )
-            
+
         if self.hold_left is not None:
             self.hold_left.setRect(
                 QRectF(
@@ -187,7 +187,7 @@ class ROI_Rect(QGraphicsRectItem):
                     height,
                 )
             )
-            
+
         if self.hold_right is not None:
             self.hold_right.setRect(
                 QRectF(
@@ -201,7 +201,7 @@ class ROI_Rect(QGraphicsRectItem):
 
     def itemChange(self, change, value):
         # print("itemChange in  | change:", change, "value:", value)
-        
+
         if change == QGraphicsItem.ItemPositionChange and self.keep_in_scene:
             # print("QGraphicsItem.ItemPositionChange")
             # (WRONG) https://stackoverflow.com/questions/47216468/restraining-a-qgraphicsitem-using-itemchange
@@ -239,7 +239,7 @@ class ROI_Rect(QGraphicsRectItem):
                     )
                 )
             self.move_holding_points()
-                
+
         elif change == QGraphicsItem.ItemScaleChange and self.keep_in_scene:
             # print("QGraphicsItem.ItemScaleChange")
             # print("value_old", value)
@@ -249,12 +249,12 @@ class ROI_Rect(QGraphicsRectItem):
                 value.x(),
                 value.y()
             )
-            
+
             right_bottom_value = QPointF(
                 value.x() + value.width(),
                 value.y() + value.height()
             )
-            
+
             # if not ( self.scenerect.contains(left_top_value) and self.scenerect.contains(right_bottom_value) ):
             """
             print("self.scenerect:", self.scenerect)
@@ -263,7 +263,7 @@ class ROI_Rect(QGraphicsRectItem):
             print("self.scenerect.contains(left_top_value):", self.scenerect.contains(left_top_value))
             print("self.scenerect.contains(right_bottom_value):", self.scenerect.contains(right_bottom_value))
             """
-            
+
             # Keep the item inside the scene rect.
             value.setX(
                 min(
@@ -283,8 +283,8 @@ class ROI_Rect(QGraphicsRectItem):
                     )
                 )
             )
-            
-            
+
+
             value.setHeight(
                 min(
                     self.scenerect.bottom() - value.y(),
@@ -303,7 +303,7 @@ class ROI_Rect(QGraphicsRectItem):
                     )
                 )
             )
-            
+
             self.resize_holding_points()
             # print("value_new", value)
 
@@ -317,10 +317,10 @@ class ROI_Rect(QGraphicsRectItem):
     def info(self):
         start_pos = self.mapToScene(self.boundingRect().topLeft())
         start_x, start_y = start_pos.x(), start_pos.y()
-        
+
         end_pos = self.mapToScene(self.boundingRect().bottomRight())
         end_x, end_y = end_pos.x(), end_pos.y()
-        
+
         width, height = self.rect().width(), self.rect().height()
 
         return start_x, start_y, end_x, end_y, width, height
@@ -330,14 +330,14 @@ class ROI_Rect(QGraphicsRectItem):
             self.current_color = color
             self.current_setAlphaF = setAlphaF
             self.current_pen_width = pen_width
-            
-            
+
+
             qcolor = QColor(self.current_color)
             qcolor.setAlphaF(self.current_setAlphaF)
-            
+
             self.setBrush(QBrush(qcolor))
             self.setPen(QPen(QColor(self.current_color), pen_width, Qt.SolidLine))
-            
+
             if self.scene() is not None:
                 self.scene().update()
         else:
@@ -345,29 +345,29 @@ class ROI_Rect(QGraphicsRectItem):
 
     def move(self, value_pos):
         self.setPos(value_pos)
-        
+
     def move_to_mouse(self, mouseMove_pos, position_offset=QPoint(0, 0)):
         # mouseMove_pos = self.mapToScene(mouse_pos)
         # print("mouseMove_pos:", mouseMove_pos)
-        
+
         move_x = mouseMove_pos.x() - self.creation_offset_x - position_offset.x()
         move_y = mouseMove_pos.y() - self.creation_offset_y - position_offset.y()
-        
+
         # print("move_x, move_y", move_x, move_y)
         self.move(QPoint(move_x, move_y))
-    
+
     def mouseReleaseEvent(self, event):
         self.mouseRelease_pos = event.pos()
         self.history.append([self.MouseReleaseEvent, event])
         self.mouseRelease_pos_scene = self.graphicsView_msb_test.mapToScene(event.pos())
-    
+
     """
     def mouseRelease_control(self, set_bool=None):
         if set_bool is not None:
             self.is_mouseRelease = set_bool
         return self.is_mouseRelease
     """
-    
+
     def mouseDoubleClickEvent(self, event):
         self.doubleClick_control(True)
         self.doubleClick_pos = event.pos()
@@ -384,20 +384,20 @@ class ROI_Rect(QGraphicsRectItem):
         while self.is_grabMouse:
             self.qt_priority()
             self.grabMouse_graphics_pos_scene = self.mouseMove_graphics_pos_scene
-    
+
     def doubleClick_control(self, set_bool=None):
         if set_bool is not None:
             self.is_doubleClick = set_bool
         return self.is_doubleClick
-    
+
     def ungrabMouse(self):
         print("Item UN-Grabbed.")
         self.is_grabMouse = False
-    
+
     def qt_priority(self):
         # https://stackoverflow.com/questions/8766584/displayin-an-image-in-a-qgraphicsscene
         QtCore.QCoreApplication.processEvents()
-                
+
     def destroy(self):
         self.scene().removeItem(self)
 
@@ -421,20 +421,20 @@ class ROI_Rect_Hold(QGraphicsRectItem):
         if scene is not None:
             scene.addItem(self)
             self.scenerect = self.scene().sceneRect()
-            
+
         if self.scene() is not None:
             self.scenerect = self.scene().sceneRect()
-            
+
         if color is not None:
             self.color(color=color, setAlphaF=setAlphaF, pen_width=pen_width)
 
     def info(self):
         start_pos = self.mapToScene(self.boundingRect().topLeft())
         start_x, start_y = start_pos.x(), start_pos.y()
-        
+
         end_pos = self.mapToScene(self.boundingRect().bottomRight())
         end_x, end_y = end_pos.x(), end_pos.y()
-        
+
         width, height = self.rect().width(), self.rect().height()
 
         return start_x, start_y, end_x, end_y, width, height
@@ -444,13 +444,13 @@ class ROI_Rect_Hold(QGraphicsRectItem):
             self.current_color = color
             self.current_setAlphaF = setAlphaF
             self.current_pen_width = pen_width
-            
+
             qcolor = QColor(self.current_color)
             qcolor.setAlphaF(self.current_setAlphaF)
-            
+
             self.setBrush(QBrush(qcolor))
             self.setPen(QPen(QColor(self.current_color), pen_width, Qt.SolidLine))
-            
+
             if self.scene() is not None:
                 self.scene().update()
         else:
@@ -466,39 +466,39 @@ class Ui_ImagePopup_Modified(QtWidgets.QMainWindow): #, Ui_ImagePopup):
         # self.setupUi(self)
         uic.loadUi('image_popup.ui', self)  # Load the .ui file
         self.last_image = None
-        
+
     def show_image(self, image=None, fixed_to_image_size=True, keep_aspect_ratio=True):
         if image is not None:
             self.set_image(image)
-            
+
             if fixed_to_image_size:
                 window_size = image.size()
-                
+
                 self.setMinimumSize(window_size)
-                
+
                 # rect (window_size)
                 #self.setGeometry()
-            
+
             if keep_aspect_ratio:
                 stdo(2, "Keep Aspect Ratio Feature is still at development.")
-                
+
             self.show()
         else:
             stdo(2, "Image parameter is None")
-    
+
     def set_image(self, image):
         self.last_image = image
         self.qt_label_image.setPixmap(image)
-    
+
 
 ### ### ### ### ### # ### ### ### ### ###
 ### ### ### UI CONFIGURATIONS ### ### ###
 ### ### ### ### ### # ### ### ### ### ###
 class Structure_UI(QtWidgets.QMainWindow):
-    
+
     Main_Window = None
     Developer_Settings_PopUp = None
-    
+
     UI_File_Path = ""
     Garbage_Collection = list()
 
@@ -516,16 +516,16 @@ class Structure_UI(QtWidgets.QMainWindow):
 
         # self.Main_Window.configure_Other_Settings()
         UI.configure_Button_Connections()
-        
+
     @staticmethod
     def set_Style_Sheet(QObject, style_sheet_file_path):
         QObject.setStyleSheet("") if style_sheet_file_path == "" or style_sheet_file_path == "default.qss" else QObject.setStyleSheet(
             open(style_sheet_file_path, "r").read())
-            
+
     @staticmethod
     def set_Style_Sheet_Globally(style_sheet_file_path):
         Structure_UI.set_Style_Sheet(
-            QtWidgets.QApplication.instance(), 
+            QtWidgets.QApplication.instance(),
             style_sheet_file_path
         )
 
@@ -536,28 +536,28 @@ class Structure_UI(QtWidgets.QMainWindow):
             extensions=[".qss"],
             recursive=True
         )
-        
+
         themes_dict = dict()
-        themes_dict["default"] = "" 
+        themes_dict["default"] = ""
         if len(themes_subtree) != 0:
             if type(themes_subtree[0]) is list:
                 for themes in themes_subtree:
                     for theme in themes:
                         key = theme.split("/")[-1].split(".")[0]
                         themes_dict[key] = theme
-                        
+
             else:
                 for theme in themes_subtree:
                     key = theme.split("/")[-1].split(".")[0]
                     themes_dict[key] = theme
-        
+
         if clear_before_update:
             comboBox.clear()
         for key in themes_dict.keys():
             comboBox.addItem(key)
-            
+
         return themes_dict
-        
+
     @staticmethod
     def listView_init(listView):
         model_Question_Pack_List = QStandardItemModel()
@@ -565,11 +565,11 @@ class Structure_UI(QtWidgets.QMainWindow):
             model_Question_Pack_List
         )
         return model_Question_Pack_List
-                   
+
     @staticmethod
-    def qtimer_create_and_run(parent, connection, delay=100, is_needed_start=True, is_single_shot=False):
+    def qtimer_create_and_run(parent, connection, delay: int = 100, is_needed_start=True, is_single_shot=False):
         timer = QTimer(parent)
-        timer.setInterval(delay)
+        timer.setInterval(int(delay))
         timer.timeout.connect(connection)
         timer.setSingleShot(is_single_shot)
         if is_needed_start:
@@ -611,27 +611,27 @@ def run_UI(app, UI, title, show_UI=True, is_Maximized=False):
             UI.showMaximized()  # Show in fully fitted window size#
         else:
             UI.show()  # Show at default window size#
-            
+
     sys.exit(app.exec())
-    
+
 def init_and_run_UI(title, Class_UI, run=True, UI_File_Path= "test.ui", show_UI = True, is_Maximized=False):
     app, ui = init_UI(
-        Class_UI, 
-        UI_File_Path = UI_File_Path, 
+        Class_UI,
+        UI_File_Path = UI_File_Path,
     )
     if run:
         run_UI(
-            app = app, 
+            app = app,
             UI = ui,
             title = title,
-            show_UI = show_UI, 
+            show_UI = show_UI,
             is_Maximized=is_Maximized
         )
 
 if __name__ == "__main__":
-    
+
     app, ui = init_and_run_UI(
-        title = "Test", 
-        Class_UI = Structure_UI, 
+        title = "Test",
+        Class_UI = Structure_UI,
         UI_File_Path = sys.argv[1] if len(sys.argv) == 2 else "test.ui"
     )
